@@ -38,7 +38,9 @@ app.whenReady().then(() => {
   // Electron's default menu is invisible on a frameless window but its shortcuts still fire:
   // Ctrl+W, pressed out of browser habit while scrolling, closed the window and quit the app.
   Menu.setApplicationMenu(null)
-  const feed = session.fromPartition('persist:feed') // log in once, cookies survive restarts
+  // Log in once: the login cookie survives restarts, encrypted (enableCookieEncryption fuse).
+  // Electron has no password manager, so a password typed into X or Instagram is never stored.
+  const feed = session.fromPartition('persist:feed')
   feed.setUserAgent(CHROME_UA)
   // The feed gets no camera, mic, location, notifications or clipboard: it can only show pages.
   feed.setPermissionRequestHandler((_, __, allow) => allow(false))

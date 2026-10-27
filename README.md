@@ -37,7 +37,8 @@ Drag the panel's left edge to make it wider or narrower; it remembers that too.
 - The plugin sends one word to the app on your own PC (`127.0.0.1`): `prompt`, `stop`,
   `attention` or `end`. Nothing about your prompts or code is sent, and nothing leaves your PC.
 - The app is told by Windows which window is in front. It never reads keystrokes or the screen.
-- Your X and Instagram logins stay in the app's own browser profile on your PC.
+- Your password is never stored. Only the login session is kept, encrypted with a key Windows
+  ties to your Windows account, so it is useless if copied to another account or PC.
 - The feed gets no camera, microphone, location, notification or clipboard access.
 - The panel only ever shows X, Instagram and their sign-in pages. Any other link opens in your
   normal browser, so no other site runs with your logins.
