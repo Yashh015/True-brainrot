@@ -7,9 +7,9 @@ const { watchClaude, noFade } = require('./winwatch')
 const { inFeed, isWebLink } = require('./links')
 const { PORT } = require('./install-hooks')
 
-// The size button's presets, width to height. The first, phone-shaped like the feeds, is the
-// default; dragging the left edge still sets any width in between.
-const RATIOS = [['9:16', 9 / 16], ['3:4', 3 / 4], ['1:1', 1]]
+const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
+// Chrome's own zoom steps, so Ctrl+wheel and Ctrl+= / - feel the same as in a browser.
+const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 const BAR = 44 // height of the tab/banner bar in index.html
 const MIN_WIDTH = 320 // narrower than this and the feeds' own layouts break
 const BORDER = 1 // the frame index.html draws round the feed
@@ -60,14 +60,10 @@ app.whenReady().then(() => {
   const { workArea } = screen.getPrimaryDisplay()
   // The width you dragged it to last time, kept next to the feed's cookies.
   const sizeFile = path.join(app.getPath('userData'), 'width.json')
-  // A corrupt file, a width saved on a bigger screen, or a preset taller screens can't fit
-  // must never put the panel off-screen.
+  // A corrupt file, or a width saved on a bigger screen, must never put the panel off-screen.
   const fit = w => Math.min(Math.max(Math.round(w), MIN_WIDTH), Math.round(workArea.width * 0.6))
-  const ratioWidth = r => fit(workArea.height * r)
-  let width = ratioWidth(RATIOS[0][1])
+  let width = fit(workArea.height * ASPECT)
   try { const saved = JSON.parse(fs.readFileSync(sizeFile, 'utf8')); if (Number.isFinite(saved)) width = fit(saved) } catch {}
-  // The preset the current width matches, or Custom after a drag.
-  const ratioName = () => (RATIOS.find(([, r]) => Math.abs(ratioWidth(r) - width) <= 2) || ['Custom'])[0]
   const win = new BrowserWindow({
     x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height,
     minWidth: MIN_WIDTH, frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
@@ -91,12 +87,46 @@ app.whenReady().then(() => {
   win.contentView.addChildView(views[current])
   layout()
   win.on('resize', layout)
-  const saveWidth = () => {
+  win.on('resized', () => {
+    width = win.getSize()[0]
     fs.writeFile(sizeFile, JSON.stringify(width), () => {})
-    win.webContents.send('ratio', ratioName())
+  })
+
+  // Zoom, per site, remembered next to the width. Chromium only zooms on Ctrl+wheel or Ctrl+=
+  // when a menu or page asks it to, and the menu is gone, so the panel does it itself.
+  const zoomFile = path.join(app.getPath('userData'), 'zoom.json')
+  const zoom = {}
+  try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(zoomFile, 'utf8')))) if (ZOOMS.includes(v)) zoom[k] = v } catch {}
+  const showZoom = () => win.webContents.send('zoom', zoom[current] || 1)
+  const setZoom = (name, factor) => {
+    zoom[name] = factor
+    views[name].webContents.setZoomFactor(factor)
+    fs.writeFile(zoomFile, JSON.stringify(zoom), () => {})
+    if (name === current) showZoom()
   }
-  win.on('resized', () => { width = win.getSize()[0]; saveWidth() })
-  win.webContents.on('did-finish-load', () => win.webContents.send('ratio', ratioName()))
+  const stepZoom = (name, by) => {
+    const at = ZOOMS.indexOf(zoom[name] || 1)
+    setZoom(name, ZOOMS[Math.min(Math.max(at + by, 0), ZOOMS.length - 1)])
+  }
+  // Ctrl+= / Ctrl+- / Ctrl+0, wherever the keyboard is in the panel: in a feed you've clicked
+  // into, or still on the bar above it (the panel opens without focus, so that's the usual case).
+  const zoomKeys = name => (event, input) => {
+    if (input.type !== 'keyDown' || !input.control || input.alt) return
+    const by = { '=': 1, '+': 1, '-': -1 }[input.key]
+    if (by) stepZoom(name(), by)
+    else if (input.key === '0') setZoom(name(), 1)
+    else return
+    event.preventDefault()
+  }
+  for (const [name, view] of Object.entries(views)) {
+    const page = view.webContents
+    page.on('zoom-changed', (_, direction) => stepZoom(name, direction === 'in' ? 1 : -1))
+    page.on('before-input-event', zoomKeys(() => name))
+    // Chromium can drop the zoom when a page reloads; put it back every time.
+    page.on('did-finish-load', () => page.setZoomFactor(zoom[name] || 1))
+  }
+  win.webContents.on('before-input-event', zoomKeys(() => current))
+  win.webContents.on('did-finish-load', showZoom)
 
   const pauseVideo = () => {
     for (const v of Object.values(views))
@@ -155,17 +185,12 @@ app.whenReady().then(() => {
     current = name
     win.contentView.addChildView(views[current])
     layout()
+    showZoom()
   })
   ipcMain.on('snooze', () => companion.snooze())
   ipcMain.on('minimise', () => companion.close())
   // Next preset; from Custom it starts again at the first. The panel stays docked right.
-  ipcMain.on('ratio', () => {
-    const i = RATIOS.findIndex(([name]) => name === ratioName())
-    width = ratioWidth(RATIOS[(i + 1) % RATIOS.length][1])
-    clearInterval(slide)
-    if (win.isVisible()) place(inX())
-    saveWidth()
-  })
+  ipcMain.on('zoom-reset', () => setZoom(current, 1))
   ipcMain.on('quit', () => app.quit())
 
   // Alt+F4 or any other window close just puts the panel away; only the × button, the busy-port

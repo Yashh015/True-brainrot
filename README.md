@@ -27,6 +27,10 @@ plugin's hooks run through `cmd`.
 |---|---|
 | Ctrl+Q | Open or close the panel yourself |
 | Ctrl+Alt+F | Pause the companion for focused work, and resume |
+| Ctrl + wheel, Ctrl+= / Ctrl+- | Zoom the feed in or out; X and Instagram each remember their own |
+| Ctrl+0 | Back to 100% (or click the % in the bar) |
+
+Drag the panel's left edge to make it wider or narrower; it remembers that too.
 
 ## What it can and can't see
 
