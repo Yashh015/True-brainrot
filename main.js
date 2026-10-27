@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
+const { app, BrowserWindow, WebContentsView, Menu, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
@@ -31,6 +31,9 @@ if (!app.requestSingleInstanceLock()) { app.quit(); return }
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark' // X and Instagram follow it, so the feeds match Claude's dark panes
+  // Electron's default menu is invisible on a frameless window but its shortcuts still fire:
+  // Ctrl+W, pressed out of browser habit while scrolling, closed the window and quit the app.
+  Menu.setApplicationMenu(null)
   const feed = session.fromPartition('persist:feed') // log in once, cookies survive restarts
   feed.setUserAgent(CHROME_UA)
   // The feed gets no camera, mic, location, notifications or clipboard: it can only show pages.
@@ -146,6 +149,13 @@ app.whenReady().then(() => {
   ipcMain.on('snooze', () => companion.snooze())
   ipcMain.on('minimise', () => companion.close())
   ipcMain.on('quit', () => app.quit())
+
+  // Alt+F4 or any other window close just puts the panel away; only the × button, the busy-port
+  // dialog or Windows shutting down quits. One window gone means the whole app gone otherwise.
+  let quitting = false
+  app.on('before-quit', () => { quitting = true })
+  win.on('session-end', () => { quitting = true }) // log off / restart: never hold Windows up
+  win.on('close', event => { if (!quitting) { event.preventDefault(); companion.close() } })
 
   http.createServer((req, res) => {
     // curl sends no Origin; a web page in your browser does, and gets ignored.
