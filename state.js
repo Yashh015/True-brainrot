@@ -3,6 +3,7 @@
 const SHOW_DELAY = 5000 // quick-reply guard: a reply faster than this never shows the feed
 const HIDE_DELAY = 2000 // the banner stays this long before the panel goes
 const SNOOZE = 5000 // the banner's "5 more s" button
+const IDLE_POLL = 1000 // while you are still at the keyboard (planning), re-check this often
 
 function createCompanion(ui, schedule) {
   let shown = false
@@ -25,6 +26,12 @@ function createCompanion(ui, schedule) {
     if (shown) { shown = false; ui.hide() }
   }
 
+  // Claude is still working past the guard; wait until you have stepped away too.
+  function showWhenIdle() {
+    if (!ui.isIdle || ui.isIdle()) show()
+    else showTimer = schedule(showWhenIdle, IDLE_POLL)
+  }
+
   // Any session finishing or asking hides the feed, so no per-session count is kept.
   function handBack(kind) {
     showTimer = cancel(showTimer)
@@ -37,12 +44,14 @@ function createCompanion(ui, schedule) {
     event(name) {
       if (name === 'prompt') {
         if (shown) show()
-        else if (enabled && !showTimer) showTimer = schedule(show, SHOW_DELAY)
+        else if (enabled && !showTimer) showTimer = schedule(showWhenIdle, SHOW_DELAY)
       } else if (name === 'stop') handBack('done')
       else if (name === 'attention') handBack('attention')
       else if (name === 'end') hide()
     },
     open: show,
+    close: hide,
+    toggleOpen() { shown ? hide() : show() },
     snooze() {
       if (hideTimer) { cancel(hideTimer); hideTimer = schedule(hide, SNOOZE) }
     },

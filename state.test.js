@@ -3,7 +3,7 @@ const assert = require('node:assert')
 const { createCompanion } = require('./state')
 
 // Fake clock: tick(ms) runs every timer that falls due, in order.
-function rig() {
+function rig(isIdle = () => true) {
   const log = []
   let timers = []
   let now = 0
@@ -27,6 +27,7 @@ function rig() {
     show: () => log.push('show'),
     hide: () => log.push('hide'),
     alert: kind => log.push('alert:' + kind),
+    isIdle: () => isIdle(),
   }, schedule)
   return { c, log, tick }
 }
@@ -98,4 +99,32 @@ test('session end hides at once', () => {
   const { c, log } = rig()
   c.open(); c.event('end')
   assert.deepStrictEqual(log, ['show', 'hide'])
+})
+
+test('the open key shows at once and closes on a second press', () => {
+  const { c, log } = rig()
+  c.toggleOpen(); c.toggleOpen()
+  assert.deepStrictEqual(log, ['show', 'hide'])
+})
+
+test('while you are busy (planning) it waits; it shows once you go idle', () => {
+  let idle = false
+  const { c, log, tick } = rig(() => idle)
+  c.event('prompt'); tick(30000)
+  assert.deepStrictEqual(log, [])
+  idle = true; tick(1000)
+  assert.deepStrictEqual(log, ['show'])
+})
+
+test('a reply that lands while you are busy never shows the feed', () => {
+  const { c, log, tick } = rig(() => false)
+  c.event('prompt'); tick(20000); c.event('stop'); tick(60000)
+  assert.deepStrictEqual(log, [])
+})
+
+test('the minimise button hides now and the next long task shows it again', () => {
+  const { c, log, tick } = rig()
+  c.open(); c.close()
+  c.event('prompt'); tick(5000)
+  assert.deepStrictEqual(log, ['show', 'hide', 'show'])
 })
