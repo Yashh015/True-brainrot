@@ -1,0 +1,12 @@
+{
+  "name": "scroll-companion",
+  "owner": { "name": "United Instruments" },
+  "description": "Scroll Companion: a feed panel that steps aside the moment Claude needs you",
+  "plugins": [
+    {
+      "name": "scroll-companion",
+      "source": "./plugin",
+      "description": "Tells the Scroll Companion app when Claude starts a long task, finishes, or needs you"
+    }
+  ]
+}
