@@ -10,7 +10,7 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
 2. In Claude Code, add the plugin that tells the app what Claude is doing:
 
    ```
-   /plugin marketplace add <owner>/scroll-companion
+   /plugin marketplace add Yashh015/True-brainrot
    /plugin install scroll-companion@scroll-companion
    ```
 
