@@ -75,12 +75,18 @@ app.whenReady().then(() => {
   win.loadFile('index.html')
   noFade(win.getNativeWindowHandle())
 
+  // Logins saved before encryption was switched on are still plain text on disk: write them back.
+  // Done before the feeds load, or a cookie a site refreshes meanwhile is overwritten with the old one.
+  const encrypted = feed.cookies.get({})
+    .then(all => Promise.all(all.map(c => feed.cookies.set(toSetDetails(c)).catch(() => {}))))
+    .then(() => feed.cookies.flushStore()).catch(() => {})
+
   // One view per site, kept alive while detached so each keeps its scroll position.
   const views = {}
   for (const [name, url] of Object.entries(SITES)) {
     views[name] = new WebContentsView({ webPreferences: { session: feed } })
     views[name].setBackgroundColor(BG)
-    views[name].webContents.loadURL(url)
+    encrypted.then(() => views[name].webContents.loadURL(url)).catch(() => {}) // did-fail-load retries
   }
   let current = 'x'
   const layout = () => {
@@ -144,10 +150,6 @@ app.whenReady().then(() => {
   // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
   // loses a login you just made. Write them now, each time the panel steps away and on quit.
   const saveLogins = () => feed.cookies.flushStore().catch(() => {})
-  // Logins saved before encryption was switched on are still plain text on disk: write them back.
-  feed.cookies.get({})
-    .then(all => Promise.all(all.map(c => feed.cookies.set(toSetDetails(c)).catch(() => {}))))
-    .then(saveLogins)
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
   // Every move re-states the size: at 125% scaling setPosition alone rounds the width
