@@ -90,6 +90,10 @@ app.whenReady().then(() => {
       v.webContents.executeJavaScript("document.querySelectorAll('video').forEach(v => v.pause())").catch(() => {})
   }
 
+  // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
+  // loses a login you just made. Write them now, each time the panel steps away and on quit.
+  const saveLogins = () => feed.cookies.flushStore().catch(() => {})
+
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
   // Every move re-states the size: at 125% scaling setPosition alone rounds the width
   // a pixel or two each frame, and a slide is ~10 frames, so the panel grew past the screen edge.
@@ -115,12 +119,13 @@ app.whenReady().then(() => {
       slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
-    hide: () => { pauseVideo(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
+    hide: () => { pauseVideo(); saveLogins(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
     // Following Claude out and back is instant, no slide and no fade: copying Claude's own
     // minimise animation looked a beat slow, so the panel is gone the moment Claude starts to go.
     leave: () => {
       clearInterval(slide)
       pauseVideo()
+      saveLogins()
       win.hide()
     },
     back: () => {
@@ -155,7 +160,7 @@ app.whenReady().then(() => {
   // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
   // tray, and the panel steps out of sight at once; come back and it returns.
   const stopWatching = watchClaude(present => companion.setPresent(present))
-  app.on('will-quit', stopWatching)
+  app.on('will-quit', () => { stopWatching(); saveLogins() })
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())

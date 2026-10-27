@@ -48,7 +48,7 @@ function createCompanion(ui, schedule) {
         else if (enabled && !showTimer) showTimer = schedule(showWhenIdle, SHOW_DELAY)
       } else if (name === 'stop') handBack('done')
       else if (name === 'attention') handBack('attention')
-      else if (name === 'end') hide()
+      // No 'end': any chat closing anywhere used to slam the panel shut mid-scroll; 'stop' covers it.
     },
     // Opening it yourself shows it wherever you are, so the first-run login works and Ctrl+Q
     // never looks dead; it still steps aside the next time another app comes to the front.

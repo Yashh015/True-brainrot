@@ -1,22 +1,26 @@
-// Writes the companion's hooks into Claude Code's settings.json, keeping every other
-// setting and hook. Safe to re-run: old companion entries (found by port) are replaced.
+// Writes the plugin's hooks into Claude Code's settings.json, for running from this folder
+// without installing the plugin. Keeps every other setting and hook. Safe to re-run: old
+// companion entries (found by port) are replaced. Don't use it and the plugin together,
+// or every hook fires twice.
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
 const PORT = 47321
-const EVENTS = { UserPromptSubmit: 'prompt', Stop: 'stop', Notification: 'attention', SessionEnd: 'end' }
 
-// -m 1 and `|| exit 0`: Claude never waits on, or reports, a companion that isn't running.
-// The same text works in Git Bash and cmd.
-const command = name => `curl -s -m 1 -d "" http://127.0.0.1:${PORT}/${name} || exit 0`
+// plugin/hooks/hooks.json is the one definition of the hooks, so this copy never drifts from it.
+// Read on use, not at load: the installed app requires this file only for PORT.
+const pluginHooks = () => JSON.parse(fs.readFileSync(path.join(__dirname, 'plugin', 'hooks', 'hooks.json'), 'utf8')).hooks
 
 function merge(settings) {
-  const hooks = { ...settings.hooks }
-  for (const [hookEvent, name] of Object.entries(EVENTS)) {
-    const kept = (hooks[hookEvent] || []).filter(group => !JSON.stringify(group).includes(`127.0.0.1:${PORT}`))
-    hooks[hookEvent] = [...kept, { hooks: [{ type: 'command', command: command(name) }] }]
+  const ours = group => JSON.stringify(group).includes(`127.0.0.1:${PORT}`)
+  const hooks = {}
+  for (const [event, groups] of Object.entries(settings.hooks || {})) {
+    const kept = groups.filter(g => !ours(g))
+    if (kept.length) hooks[event] = kept
   }
+  for (const [event, groups] of Object.entries(pluginHooks()))
+    hooks[event] = [...(hooks[event] || []), ...groups]
   return { ...settings, hooks }
 }
 
@@ -28,9 +32,9 @@ function install(file = path.join(os.homedir(), '.claude', 'settings.json')) {
   fs.writeFileSync(file, JSON.stringify(merge(settings), null, 2) + '\n')
 }
 
-module.exports = { PORT, merge, install, command }
+module.exports = { PORT, merge, install }
 
 if (require.main === module) {
   install(process.argv[2])
-  console.log('Companion hooks installed. New Claude sessions will use them.')
+  console.log('Hooks installed. New Claude sessions will use them.')
 }

@@ -3,10 +3,20 @@ const assert = require('node:assert')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { merge, install, command } = require('./install-hooks')
+const { merge, install } = require('./install-hooks')
+const plugin = JSON.parse(fs.readFileSync(path.join(__dirname, 'plugin', 'hooks', 'hooks.json'), 'utf8')).hooks
 
-test('command never fails Claude when the app is down', () => {
-  assert.strictEqual(command('stop'), 'curl -s -m 1 -d "" http://127.0.0.1:47321/stop || exit 0')
+test('installs exactly the plugin hooks, idle reminders filtered out', () => {
+  assert.deepStrictEqual(merge({}).hooks, plugin)
+  assert.match(merge({}).hooks.Notification[0].matcher, /permission_prompt/)
+  assert.doesNotMatch(merge({}).hooks.Notification[0].matcher, /idle_prompt/)
+})
+
+test('replaces the old curl hooks, including events the plugin no longer uses', () => {
+  const old = { hooks: [{ type: 'command', command: 'curl -s -m 1 -d "" http://127.0.0.1:47321/end || exit 0' }] }
+  const out = merge({ hooks: { SessionEnd: [old], Notification: [old] } })
+  assert.strictEqual(out.hooks.SessionEnd, undefined)
+  assert.deepStrictEqual(out.hooks.Notification, plugin.Notification)
 })
 
 test('keeps other settings and other hooks', () => {
@@ -20,8 +30,7 @@ test('keeps other settings and other hooks', () => {
 
 test('running twice does not duplicate', () => {
   const twice = merge(merge({}))
-  for (const event of ['UserPromptSubmit', 'Stop', 'Notification', 'SessionEnd'])
-    assert.strictEqual(twice.hooks[event].length, 1, event)
+  assert.deepStrictEqual(twice.hooks, plugin)
 })
 
 test('broken settings.json is left untouched', () => {

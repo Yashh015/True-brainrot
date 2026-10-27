@@ -95,10 +95,10 @@ test('off switch hides and ignores prompts until turned back on', () => {
   assert.strictEqual(log.at(-1), 'show')
 })
 
-test('session end hides at once', () => {
+test('a chat closing somewhere leaves the panel alone', () => {
   const { c, log } = rig()
   c.open(); c.event('end')
-  assert.deepStrictEqual(log, ['show', 'hide'])
+  assert.deepStrictEqual(log, ['show'])
 })
 
 test('the open key shows at once and closes on a second press', () => {
