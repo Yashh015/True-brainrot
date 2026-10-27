@@ -26,7 +26,7 @@
   #hero h2 { margin: 0; font: 400 26px/1.2 Cambria, Georgia, serif; letter-spacing: -0.2px }
   #hero h2 em { display: block; color: #e8dccb }
   #hero p { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: #c9bba8 }
-  #card { margin-top: auto; padding: 20px; display: grid; gap: 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.16);
+  #card { margin: auto; width: 100%; max-width: 300px; box-sizing: border-box; text-align: center; padding: 20px; display: grid; gap: 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.16);
     background: linear-gradient(165deg, rgba(92,62,38,.72), rgba(196,92,58,.62)); backdrop-filter: blur(14px); box-shadow: 0 18px 50px rgba(0,0,0,.45) }
   #card h1 { margin: 0; font-size: 18px; font-weight: 600 }
   #card p { margin: 0; color: #eadccb; line-height: 1.5; font-size: 13.5px }
@@ -93,12 +93,12 @@
     'signed-out': view => view.sent
       ? [el('h1', { textContent: 'Check your email' }),
          el('p', { textContent: `We sent a sign-in link to ${view.sent}. Open it on this PC.` }),
-         button('Use a different email', () => companion.signOut())]
+         button('Change email', () => companion.signOut())]
       : [el('h1', { textContent: 'Sign in to True Brainrot' }),
          el('p', { textContent: 'Your 7-day free trial starts when you sign in. No card needed.' }),
          el('form', { onsubmit: event => { event.preventDefault(); companion.signIn(event.target.email.value) } },
            el('input', { name: 'email', type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', style: 'width:100%;box-sizing:border-box;margin-bottom:10px' }),
-           el('button', { type: 'submit', textContent: 'Email me a sign-in link', className: 'primary', style: 'width:100%' }))],
+           el('button', { type: 'submit', textContent: 'Send link', className: 'primary', style: 'width:100%' }))],
     'trial-ended': () => [el('h1', { textContent: 'Your free trial has ended' }),
       el('p', { textContent: 'Subscribe to keep scrolling while Claude works.' }), button('Subscribe', () => companion.subscribe(), true)],
     'cancelled': () => [el('h1', { textContent: 'Your subscription has ended' }),
@@ -109,7 +109,7 @@
       el('p', { textContent: 'True Brainrot checks your subscription every few days.' }), button('Try again', () => companion.refresh(), true)],
     'device-limit': view => [el('h1', { textContent: 'Signed in on 2 PCs already' }),
       el('p', { textContent: 'Sign out one of them to use True Brainrot here.' }),
-      ...view.devices.map(d => el('div', { className: 'device' }, el('span', { textContent: d.name }), button('Sign out that PC', () => companion.removeDevice(d.device_id))))],
+      ...view.devices.map(d => el('div', { className: 'device' }, el('span', { textContent: d.name }), button('Sign out',() => companion.removeDevice(d.device_id))))],
   }
 
   // Re-built only when something changed, so a half-typed email survives the minute-by-minute check.
