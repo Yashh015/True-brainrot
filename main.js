@@ -1,9 +1,9 @@
 const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
-const { spawn } = require('child_process')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
+const { watchClaude } = require('./winwatch')
 const { PORT } = require('./install-hooks')
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
@@ -127,20 +127,10 @@ app.whenReady().then(() => {
     app.quit()
   }).listen(PORT, '127.0.0.1')
 
-  // The feed belongs to Claude: when its window is closed to the tray or minimised, the
-  // panel goes too. Electron can't see other apps' windows, so one PowerShell child reports
-  // every 2 s. .NET only fills MainWindowTitle for a visible window, which is what tells
-  // "closed to tray" apart from "open". It exits on its own if this app dies.
-  // ponytail: a show while Claude is down flashes for up to 2 s before this closes it.
-  const watcher = spawn('powershell', ['-NoProfile', '-Command', `
-    Add-Type 'using System; using System.Runtime.InteropServices; public class U { [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); }'
-    while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
-      $w = Get-Process claude -ErrorAction SilentlyContinue | Where-Object MainWindowTitle -eq 'Claude' | Select-Object -First 1
-      if ($w -and -not [U]::IsIconic($w.MainWindowHandle)) { 'up' } else { 'down' }
-      Start-Sleep -Seconds 2
-    }`], { windowsHide: true })
-  watcher.stdout.on('data', d => { if (String(d).includes('down')) companion.close() })
-  app.on('will-quit', () => watcher.kill())
+  // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
+  // tray, and the panel steps out of sight at once; come back and it returns.
+  const stopWatching = watchClaude(present => companion.setPresent(present))
+  app.on('will-quit', stopWatching)
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())

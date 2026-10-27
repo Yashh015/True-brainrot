@@ -7,6 +7,7 @@ const IDLE_POLL = 1000 // while you are still at the keyboard (planning), re-che
 
 function createCompanion(ui, schedule) {
   let shown = false
+  let present = true // Claude (or the panel) is the window in front; away, the panel steps out of sight
   let enabled = true
   let showTimer = null
   let hideTimer = null
@@ -17,13 +18,13 @@ function createCompanion(ui, schedule) {
     showTimer = cancel(showTimer)
     hideTimer = cancel(hideTimer)
     shown = true
-    ui.show()
+    if (present) ui.show()
   }
 
   function hide() {
     showTimer = cancel(showTimer)
     hideTimer = cancel(hideTimer)
-    if (shown) { shown = false; ui.hide() }
+    if (shown) { shown = false; if (present) ui.hide() }
   }
 
   // Claude is still working past the guard; wait until you have stepped away too.
@@ -54,6 +55,13 @@ function createCompanion(ui, schedule) {
     toggleOpen() { shown ? hide() : show() },
     snooze() {
       if (hideTimer) { cancel(hideTimer); hideTimer = schedule(hide, SNOOZE) }
+    },
+    // Leaving Claude only hides the panel from view: `shown` is kept, so coming back
+    // brings it back, and the done/needs-you chime still plays while you are elsewhere.
+    setPresent(now) {
+      if (now === present) return
+      present = now
+      if (shown) now ? ui.show() : ui.hide()
     },
     toggleEnabled() {
       enabled = !enabled

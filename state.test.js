@@ -128,3 +128,29 @@ test('the minimise button hides now and the next long task shows it again', () =
   c.event('prompt'); tick(5000)
   assert.deepStrictEqual(log, ['show', 'hide', 'show'])
 })
+
+test('switching to another app hides the panel; coming back brings it back', () => {
+  const { c, log } = rig()
+  c.open(); c.setPresent(false); c.setPresent(true)
+  assert.deepStrictEqual(log, ['show', 'hide', 'show'])
+})
+
+test('a long task that starts while you are away waits for you to come back', () => {
+  const { c, log, tick } = rig()
+  c.setPresent(false); c.event('prompt'); tick(10000)
+  assert.deepStrictEqual(log, [])
+  c.setPresent(true)
+  assert.deepStrictEqual(log, ['show'])
+})
+
+test('Claude finishing while you are away chimes, and the panel stays gone when you return', () => {
+  const { c, log, tick } = rig()
+  c.open(); c.setPresent(false); c.event('stop'); tick(2000); c.setPresent(true)
+  assert.deepStrictEqual(log, ['show', 'hide', 'alert:done'])
+})
+
+test('a closed panel stays closed when you come back to Claude', () => {
+  const { c, log } = rig()
+  c.setPresent(false); c.setPresent(true)
+  assert.deepStrictEqual(log, [])
+})
