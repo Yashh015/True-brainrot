@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell } = require('electron')
+const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog } = require('electron')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
@@ -18,7 +18,8 @@ const SIGN_IN = ['x.com', 'twitter.com', 'instagram.com', 'facebook.com', 'accou
 const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
 
 // A second copy would crash on the busy port; let the first one win.
-if (!app.requestSingleInstanceLock()) app.quit()
+// quit() is async, so return too or the rest of this file still runs.
+if (!app.requestSingleInstanceLock()) { app.quit(); return }
 
 app.whenReady().then(() => {
   const feed = session.fromPartition('persist:feed') // log in once, cookies survive restarts
@@ -109,6 +110,10 @@ app.whenReady().then(() => {
     // curl sends no Origin; a web page in your browser does, and gets ignored.
     if (req.method === 'POST' && !req.headers.origin) companion.event(req.url.slice(1))
     res.writeHead(204).end() // no body: UserPromptSubmit output would reach Claude's context
+  }).on('error', err => {
+    // Something else holds the port: say so instead of crashing with a stack trace.
+    dialog.showErrorBox('Scroll Companion', `Can't listen on port ${PORT}: ${err.message}`)
+    app.quit()
   }).listen(PORT, '127.0.0.1')
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
