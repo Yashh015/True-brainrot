@@ -1,12 +1,12 @@
 {
-  "name": "scroll-companion",
+  "name": "true-brainrot",
   "owner": { "name": "United Instruments" },
-  "description": "Scroll Companion: a feed panel that steps aside the moment Claude needs you",
+  "description": "True Brainrot: a feed panel that steps aside the moment Claude needs you",
   "plugins": [
     {
-      "name": "scroll-companion",
+      "name": "true-brainrot",
       "source": "./plugin",
-      "description": "Tells the Scroll Companion app when Claude starts a long task, finishes, or needs you"
+      "description": "Tells the True Brainrot app when Claude starts a long task, finishes, or needs you"
     }
   ]
 }

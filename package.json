@@ -1,6 +1,6 @@
 {
-  "name": "scroll-companion",
-  "productName": "Scroll Companion",
+  "name": "true-brainrot",
+  "productName": "True Brainrot",
   "version": "0.1.0",
   "description": "A feed panel that steps aside the moment Claude needs you",
   "author": "United Instruments",
@@ -12,7 +12,7 @@
     "dist": "electron-builder --win"
   },
   "build": {
-    "appId": "net.unitedinstruments.scrollcompanion",
+    "appId": "net.unitedinstruments.truebrainrot",
     "files": ["main.js", "preload.js", "index.html", "state.js", "winwatch.js", "links.js", "install-hooks.js"],
     "asarUnpack": ["node_modules/koffi/**"],
     "win": { "target": "nsis" },

@@ -1,8 +1,8 @@
 {
-  "name": "scroll-companion",
-  "displayName": "Scroll Companion",
+  "name": "true-brainrot",
+  "displayName": "True Brainrot",
   "version": "0.1.0",
-  "description": "Tells the Scroll Companion app when Claude starts a long task, finishes, or needs you",
+  "description": "Tells the True Brainrot app when Claude starts a long task, finishes, or needs you",
   "author": { "name": "United Instruments" },
   "license": "MIT",
   "keywords": ["focus", "notifications", "desktop"]

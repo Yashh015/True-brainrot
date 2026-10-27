@@ -21,8 +21,8 @@ const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
 const openOutside = url => { if (isWebLink(url)) shell.openExternal(url) }
 
-// Electron names the data folder after productName, so renaming the app would silently log
-// everyone out of X and Instagram. Pin it to the original folder. Must run before the lock below.
+// Electron names the data folder after productName, so the rename from Scroll Companion would log
+// everyone out of X and Instagram. Keep the original folder. Must run before the lock below.
 app.setPath('userData', path.join(app.getPath('appData'), 'scroll-companion'))
 
 // A second copy would crash on the busy port; let the first one win.
@@ -148,7 +148,7 @@ app.whenReady().then(() => {
     res.writeHead(204).end() // no body: UserPromptSubmit output would reach Claude's context
   }).on('error', err => {
     // Something else holds the port: say so instead of crashing with a stack trace.
-    dialog.showErrorBox('Scroll Companion', `Can't listen on port ${PORT}: ${err.message}`)
+    dialog.showErrorBox('True Brainrot', `Can't listen on port ${PORT}: ${err.message}`)
     app.quit()
   }).listen(PORT, '127.0.0.1')
 

@@ -1,4 +1,4 @@
-# Scroll Companion
+# True Brainrot
 
 A side panel for X and Instagram that slides in while Claude works on a long task, and steps
 aside with a chime the moment Claude finishes or needs your permission. It only ever appears
@@ -6,12 +6,12 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
 
 ## Install
 
-1. Install the Scroll Companion app and start it. It starts with Windows from then on.
+1. Install the True Brainrot app and start it. It starts with Windows from then on.
 2. In Claude Code, add the plugin that tells the app what Claude is doing:
 
    ```
    /plugin marketplace add Yashh015/True-brainrot
-   /plugin install scroll-companion@scroll-companion
+   /plugin install true-brainrot@true-brainrot
    ```
 
 3. Log in to X and Instagram once inside the panel. Use a username and password:
