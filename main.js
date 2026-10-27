@@ -7,7 +7,9 @@ const { watchClaude, noFade } = require('./winwatch')
 const { inFeed, isWebLink } = require('./links')
 const { PORT } = require('./install-hooks')
 
-const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
+// The size button's presets, width to height. The first, phone-shaped like the feeds, is the
+// default; dragging the left edge still sets any width in between.
+const RATIOS = [['9:16', 9 / 16], ['3:4', 3 / 4], ['1:1', 1]]
 const BAR = 44 // height of the tab/banner bar in index.html
 const MIN_WIDTH = 320 // narrower than this and the feeds' own layouts break
 const BORDER = 1 // the frame index.html draws round the feed
@@ -16,8 +18,10 @@ const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
 const SLIDE_MS = 180 // slide in/out from the right edge
 const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Global, so other apps lose Ctrl+Q while this runs
-// X and Instagram treat Electron's own user agent as unusual.
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+// X and Instagram treat Electron's own user agent as unusual, so present as plain Chrome. The
+// version is the engine's real one: a made-up version that disagrees with what the page's own
+// checks see is a bot signal, and a fixed one goes stale with every Electron update.
+const CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`
 const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
 const openOutside = url => { if (isWebLink(url)) shell.openExternal(url) }
 
@@ -56,10 +60,14 @@ app.whenReady().then(() => {
   const { workArea } = screen.getPrimaryDisplay()
   // The width you dragged it to last time, kept next to the feed's cookies.
   const sizeFile = path.join(app.getPath('userData'), 'width.json')
-  let width = Math.round(workArea.height * ASPECT)
-  try { width = JSON.parse(fs.readFileSync(sizeFile, 'utf8')) } catch {}
-  // A corrupt file, or a width saved on a bigger screen, must never put the panel off-screen.
-  width = Number.isFinite(width) ? Math.min(Math.max(Math.round(width), MIN_WIDTH), Math.round(workArea.width * 0.6)) : Math.round(workArea.height * ASPECT)
+  // A corrupt file, a width saved on a bigger screen, or a preset taller screens can't fit
+  // must never put the panel off-screen.
+  const fit = w => Math.min(Math.max(Math.round(w), MIN_WIDTH), Math.round(workArea.width * 0.6))
+  const ratioWidth = r => fit(workArea.height * r)
+  let width = ratioWidth(RATIOS[0][1])
+  try { const saved = JSON.parse(fs.readFileSync(sizeFile, 'utf8')); if (Number.isFinite(saved)) width = fit(saved) } catch {}
+  // The preset the current width matches, or Custom after a drag.
+  const ratioName = () => (RATIOS.find(([, r]) => Math.abs(ratioWidth(r) - width) <= 2) || ['Custom'])[0]
   const win = new BrowserWindow({
     x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height,
     minWidth: MIN_WIDTH, frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
@@ -83,10 +91,12 @@ app.whenReady().then(() => {
   win.contentView.addChildView(views[current])
   layout()
   win.on('resize', layout)
-  win.on('resized', () => {
-    width = win.getSize()[0]
+  const saveWidth = () => {
     fs.writeFile(sizeFile, JSON.stringify(width), () => {})
-  })
+    win.webContents.send('ratio', ratioName())
+  }
+  win.on('resized', () => { width = win.getSize()[0]; saveWidth() })
+  win.webContents.on('did-finish-load', () => win.webContents.send('ratio', ratioName()))
 
   const pauseVideo = () => {
     for (const v of Object.values(views))
@@ -148,6 +158,14 @@ app.whenReady().then(() => {
   })
   ipcMain.on('snooze', () => companion.snooze())
   ipcMain.on('minimise', () => companion.close())
+  // Next preset; from Custom it starts again at the first. The panel stays docked right.
+  ipcMain.on('ratio', () => {
+    const i = RATIOS.findIndex(([name]) => name === ratioName())
+    width = ratioWidth(RATIOS[(i + 1) % RATIOS.length][1])
+    clearInterval(slide)
+    if (win.isVisible()) place(inX())
+    saveWidth()
+  })
   ipcMain.on('quit', () => app.quit())
 
   // Alt+F4 or any other window close just puts the panel away; only the × button, the busy-port

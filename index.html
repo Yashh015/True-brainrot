@@ -21,6 +21,7 @@
   <button data-tab="instagram">Instagram</button>
   <span id="gap"></span>
   <span id="banner"><span id="text"></span><button onclick="companion.snooze()">5 more s</button></span>
+  <button id="ratio" onclick="companion.ratio()" title="Panel shape: 9:16, 3:4, 1:1. Or drag the left edge"></button>
   <button class="icon" onclick="companion.minimise()" title="Hide till Claude's next long task">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3.5 8h9"/></svg>
   </button>
@@ -34,6 +35,8 @@
     tabs.forEach(t => t.classList.toggle('on', t === b))
     companion.tab(b.dataset.tab)
   })
+
+  companion.onRatio(name => { ratio.textContent = name })
 
   const ctx = new AudioContext()
 
