@@ -124,6 +124,11 @@ app.whenReady().then(() => {
     page.on('before-input-event', zoomKeys(() => name))
     // Chromium can drop the zoom when a page reloads; put it back every time.
     page.on('did-finish-load', () => page.setZoomFactor(zoom[name] || 1))
+    // At Windows sign-in the app often starts before the network is up, leaving a blank feed.
+    // Try again every few seconds; -3 is a navigation the page or you cancelled, not a failure.
+    page.on('did-fail-load', (_, code, __, url, isMainFrame) => {
+      if (isMainFrame && code !== -3) setTimeout(() => page.loadURL(url), 3000)
+    })
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
   win.webContents.on('did-finish-load', showZoom)
