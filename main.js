@@ -4,7 +4,7 @@ const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
 const { watchClaude, noFade } = require('./winwatch')
-const { inFeed, isWebLink } = require('./links')
+const { inFeed, isWebLink, leavesFeed } = require('./links')
 const { PORT } = require('./install-hooks')
 const { toSetDetails } = require('./cookies')
 const { createAccount, LINK } = require('./account')
@@ -51,7 +51,11 @@ app.whenReady().then(() => {
   // Every page in the feed session, the sign-in pop-ups included, stays on FEED_HOSTS.
   app.on('web-contents-created', (_, contents) => {
     if (contents.session !== feed) return
-    const guard = (event, url) => { if (!inFeed(url)) { event.preventDefault(); openOutside(url) } }
+    const guard = event => {
+      if (!leavesFeed(event)) return
+      event.preventDefault()
+      openOutside(event.url)
+    }
     contents.on('will-navigate', guard)
     contents.on('will-redirect', guard)
     // Sign-in pop-ups open over the panel; every other new-window link goes to your normal browser.

@@ -20,3 +20,12 @@ test('only web links are handed to the browser', () => {
   for (const url of ['file:///C:/x', 'ms-settings:privacy', 'javascript:alert(1)', 'mailto:a@b.c'])
     assert.ok(!isWebLink(url), url)
 })
+
+test('only the page itself leaving the feed sites goes to the browser, never a frame inside it', () => {
+  const { leavesFeed } = require('./links')
+  assert.ok(leavesFeed({ isMainFrame: true, url: 'https://example.com/' }))
+  assert.ok(!leavesFeed({ isMainFrame: true, url: 'https://x.com/home' }))
+  // Sign-in captchas and checks redirect between other sites inside frames.
+  assert.ok(!leavesFeed({ isMainFrame: false, url: 'https://client-api.arkoselabs.com/fc/gt2' }))
+  assert.ok(!leavesFeed({ isMainFrame: false, url: 'https://example.com/' }))
+})

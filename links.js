@@ -12,4 +12,9 @@ function inFeed(url) {
 // Only web links leave for the browser; never file:, ms-settings: or other schemes a page could plant.
 const isWebLink = url => /^https?:\/\//i.test(url)
 
-module.exports = { inFeed, isWebLink }
+// A navigation the panel must stop and hand to the browser: only the page itself leaving the
+// feed sites. Frames inside it (the captcha and security checks sign-in uses) redirect between
+// other sites as they work; stopping those broke the login and flashed a browser tab open.
+const leavesFeed = ({ isMainFrame, url }) => isMainFrame && !inFeed(url)
+
+module.exports = { inFeed, isWebLink, leavesFeed }
