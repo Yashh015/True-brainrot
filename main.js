@@ -1,12 +1,14 @@
-const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog } = require('electron')
+const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
 const { PORT } = require('./install-hooks')
 
-const WIDTH = 0.3 // starting share of the screen, docked right; drag the left edge to change it
-const BAR = 36 // height of the tab/banner bar in index.html
+const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
+const BAR = 44 // height of the tab/banner bar in index.html
+const BORDER = 1 // the frame index.html draws round the feed
+const BG = '#1f1f1f' // Claude desktop's pane colour, so a slow page load never flashes white
 const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
 const SLIDE_MS = 180 // slide in/out from the right edge
@@ -22,6 +24,7 @@ const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
 if (!app.requestSingleInstanceLock()) { app.quit(); return }
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = 'dark' // X and Instagram follow it, so the feeds match Claude's dark panes
   const feed = session.fromPartition('persist:feed') // log in once, cookies survive restarts
   feed.setUserAgent(CHROME_UA)
   // The feed gets no camera, mic, location, notifications or clipboard: it can only show pages.
@@ -31,11 +34,11 @@ app.whenReady().then(() => {
   const { workArea } = screen.getPrimaryDisplay()
   // The width you dragged it to last time, kept next to the feed's cookies.
   const sizeFile = path.join(app.getPath('userData'), 'width.json')
-  let width = Math.round(workArea.width * WIDTH)
+  let width = Math.round(workArea.height * ASPECT)
   try { width = JSON.parse(fs.readFileSync(sizeFile, 'utf8')) } catch {}
   const win = new BrowserWindow({
     x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height,
-    frame: false, show: false, skipTaskbar: true, alwaysOnTop: true,
+    frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), autoplayPolicy: 'no-user-gesture-required' },
   })
   win.loadFile('index.html')
@@ -44,6 +47,7 @@ app.whenReady().then(() => {
   const views = {}
   for (const [name, url] of Object.entries(SITES)) {
     views[name] = new WebContentsView({ webPreferences: { session: feed } })
+    views[name].setBackgroundColor(BG)
     views[name].webContents.loadURL(url)
     // Sign-in pop-ups open over the panel; every other new-window link goes to your normal browser.
     views[name].webContents.setWindowOpenHandler(({ url }) => {
@@ -57,12 +61,15 @@ app.whenReady().then(() => {
   let current = 'x'
   const layout = () => {
     const [w, h] = win.getContentSize()
-    views[current].setBounds({ x: 0, y: BAR, width: w, height: h - BAR })
+    views[current].setBounds({ x: BORDER, y: BAR, width: w - 2 * BORDER, height: h - BAR - BORDER })
   }
   win.contentView.addChildView(views[current])
   layout()
   win.on('resize', layout)
-  win.on('resized', () => fs.writeFile(sizeFile, JSON.stringify(win.getSize()[0]), () => {}))
+  win.on('resized', () => {
+    width = win.getSize()[0]
+    fs.writeFile(sizeFile, JSON.stringify(width), () => {})
+  })
 
   const pauseVideo = () => {
     for (const v of Object.values(views))
@@ -70,7 +77,10 @@ app.whenReady().then(() => {
   }
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
-  const inX = () => workArea.x + workArea.width - win.getSize()[0]
+  // Every move re-states the size: at 125% scaling setPosition alone rounds the width
+  // a pixel or two each frame, and a slide is ~10 frames, so the panel grew past the screen edge.
+  const place = x => win.setBounds({ x, y: workArea.y, width, height: workArea.height })
+  const inX = () => workArea.x + workArea.width - width
   const outX = workArea.x + workArea.width
   let slide = null
   const slideTo = (to, done) => {
@@ -79,7 +89,7 @@ app.whenReady().then(() => {
     const start = Date.now()
     slide = setInterval(() => {
       const t = Math.min(1, (Date.now() - start) / SLIDE_MS)
-      win.setPosition(Math.round(from + (to - from) * (1 - (1 - t) ** 3)), workArea.y) // ease-out
+      place(Math.round(from + (to - from) * (1 - (1 - t) ** 3))) // ease-out
       if (t === 1) { clearInterval(slide); if (done) done() }
     }, 16)
   }
@@ -87,7 +97,7 @@ app.whenReady().then(() => {
   const companion = createCompanion({
     show: () => {
       win.webContents.send('alert', null)
-      if (!win.isVisible()) { win.setPosition(outX, workArea.y); win.showInactive() } // never steal focus from Claude
+      if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
       slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },

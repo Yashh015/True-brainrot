@@ -1,18 +1,40 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  body { margin: 0; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font: 13px system-ui; background: #111; color: #eee }
-  button { background: #222; color: #eee; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer }
-  #banner { display: none; gap: 8px; align-items: center }
+  /* Taken from Claude desktop's panes, so the panel reads as one more of them. */
+  :root { --bg: #1f1f1f; --line: #333; --text: #e5e5e5; --muted: #9b9b9b; --hover: #2c2c2c; --active: #383838 }
+  html, body { margin: 0; height: 100% }
+  /* The border round the whole window; main.js insets the feed by the same 1 px. */
+  body { box-sizing: border-box; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif }
+  header { height: 43px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line) }
+  button { display: grid; place-items: center; height: 30px; min-width: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: inherit; cursor: pointer }
+  button:hover { background: var(--hover); color: var(--text) }
+  button.on { background: var(--active); color: var(--text) }
+  button.icon { padding: 0 }
   #gap { flex: 1 }
+  #banner { display: none; align-items: center; gap: 6px; margin-right: 4px; padding-left: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text) }
+  #banner.attention { border-color: #b4552d }
+  #banner button { height: 26px; padding: 0 8px }
 </style>
-<button onclick="companion.tab('x')">X</button>
-<button onclick="companion.tab('instagram')">Instagram</button>
-<span id="gap"></span>
-<span id="banner"><span id="text"></span><button onclick="companion.snooze()">5 more s</button></span>
-<button onclick="companion.minimise()" title="Hide till Claude's next long task">–</button>
-<button onclick="companion.quit()" title="Quit">×</button>
+<header>
+  <button data-tab="x" class="on">X</button>
+  <button data-tab="instagram">Instagram</button>
+  <span id="gap"></span>
+  <span id="banner"><span id="text"></span><button onclick="companion.snooze()">5 more s</button></span>
+  <button class="icon" onclick="companion.minimise()" title="Hide till Claude's next long task">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3.5 8h9"/></svg>
+  </button>
+  <button class="icon" onclick="companion.quit()" title="Quit">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+  </button>
+</header>
 <script>
+  const tabs = document.querySelectorAll('[data-tab]')
+  tabs.forEach(b => b.onclick = () => {
+    tabs.forEach(t => t.classList.toggle('on', t === b))
+    companion.tab(b.dataset.tab)
+  })
+
   const ctx = new AudioContext()
 
   // Soft rising pair for done, sharp repeated beep for needs-you, so you know whether to hurry.
@@ -36,6 +58,7 @@
   companion.onAlert(kind => {
     banner.style.display = kind ? 'flex' : 'none'
     if (!kind) return
+    banner.classList.toggle('attention', kind === 'attention')
     text.textContent = kind === 'attention' ? 'Claude needs you' : "Claude's done"
     chime(kind)
   })
