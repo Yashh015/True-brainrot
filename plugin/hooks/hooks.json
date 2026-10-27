@@ -1,19 +1,19 @@
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "curl", "args": ["-s", "-m", "1", "-d", "", "http://127.0.0.1:47321/prompt"], "timeout": 3 }] }
+      { "hooks": [{ "type": "command", "command": "cmd", "args": ["/c", "curl -s --connect-timeout 0.3 -m 0.5 -X POST http://127.0.0.1:47321/prompt & exit /b 0"], "timeout": 3 }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "curl", "args": ["-s", "-m", "1", "-d", "", "http://127.0.0.1:47321/stop"], "timeout": 3 }] }
+      { "hooks": [{ "type": "command", "command": "cmd", "args": ["/c", "curl -s --connect-timeout 0.3 -m 0.5 -X POST http://127.0.0.1:47321/stop & exit /b 0"], "timeout": 3 }] }
     ],
     "Notification": [
       {
         "matcher": "permission_prompt|elicitation_dialog|agent_needs_input",
-        "hooks": [{ "type": "command", "command": "curl", "args": ["-s", "-m", "1", "-d", "", "http://127.0.0.1:47321/attention"], "timeout": 3 }]
+        "hooks": [{ "type": "command", "command": "cmd", "args": ["/c", "curl -s --connect-timeout 0.3 -m 0.5 -X POST http://127.0.0.1:47321/attention & exit /b 0"], "timeout": 3 }]
       }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "curl", "args": ["-s", "-m", "1", "-d", "", "http://127.0.0.1:47321/end"], "timeout": 3 }] }
+      { "hooks": [{ "type": "command", "command": "cmd", "args": ["/c", "curl -s --connect-timeout 0.3 -m 0.5 -X POST http://127.0.0.1:47321/end & exit /b 0"], "timeout": 3 }] }
     ]
   }
 }

@@ -56,8 +56,9 @@ function watchClaude(onChange) {
     return pid === process.pid || isClaude(pid)
   }
 
-  let last = null
-  const report = present => { if (present !== last) { last = present; onChange(present) } }
+  // Every switch is reported, repeats included: opening the panel by hand over another app
+  // means the next switch away must still reach the panel. setPresent skips true repeats.
+  const report = onChange
 
   const callback = koffi.register((hook, event, hwnd, idObject) => {
     if (idObject !== 0) return // OBJID_WINDOW only: the window itself, not a control inside it

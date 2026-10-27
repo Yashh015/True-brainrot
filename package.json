@@ -1,13 +1,26 @@
 {
   "name": "scroll-companion",
+  "productName": "Scroll Companion",
+  "version": "0.1.0",
+  "description": "A feed panel that steps aside the moment Claude needs you",
+  "author": "United Instruments",
   "private": true,
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "net.unitedinstruments.scrollcompanion",
+    "files": ["main.js", "preload.js", "index.html", "state.js", "winwatch.js", "links.js", "install-hooks.js"],
+    "asarUnpack": ["node_modules/koffi/**"],
+    "win": { "target": "nsis" },
+    "nsis": { "oneClick": true, "perMachine": false }
   },
   "devDependencies": {
-    "electron": "^45.0.0"
+    "electron": "45.0.0",
+    "electron-builder": "26.17.0"
   },
   "dependencies": {
     "koffi": "3.3.3"

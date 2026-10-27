@@ -4,10 +4,12 @@ const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
 const { watchClaude, noFade } = require('./winwatch')
+const { inFeed, isWebLink } = require('./links')
 const { PORT } = require('./install-hooks')
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
 const BAR = 44 // height of the tab/banner bar in index.html
+const MIN_WIDTH = 320 // narrower than this and the feeds' own layouts break
 const BORDER = 1 // the frame index.html draws round the feed
 const BG = '#1f1f1f' // Claude desktop's pane colour, so a slow page load never flashes white
 const OFF_SWITCH = 'Ctrl+Alt+F'
@@ -16,9 +18,12 @@ const SLIDE_MS = 180 // slide in/out from the right edge
 const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Global, so other apps lose Ctrl+Q while this runs
 // X and Instagram treat Electron's own user agent as unusual.
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-// Sign-in pop-ups from these stay in the panel, so the login lands in the feed session.
-const SIGN_IN = ['x.com', 'twitter.com', 'instagram.com', 'facebook.com', 'accounts.google.com', 'appleid.apple.com']
 const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
+const openOutside = url => { if (isWebLink(url)) shell.openExternal(url) }
+
+// Electron names the data folder after productName, so renaming the app would silently log
+// everyone out of X and Instagram. Pin it to the original folder. Must run before the lock below.
+app.setPath('userData', path.join(app.getPath('appData'), 'scroll-companion'))
 
 // A second copy would crash on the busy port; let the first one win.
 // quit() is async, so return too or the rest of this file still runs.
@@ -31,15 +36,30 @@ app.whenReady().then(() => {
   // The feed gets no camera, mic, location, notifications or clipboard: it can only show pages.
   feed.setPermissionRequestHandler((_, __, allow) => allow(false))
   feed.setPermissionCheckHandler(() => false)
+  // Every page in the feed session, the sign-in pop-ups included, stays on FEED_HOSTS.
+  app.on('web-contents-created', (_, contents) => {
+    if (contents.session !== feed) return
+    const guard = (event, url) => { if (!inFeed(url)) { event.preventDefault(); openOutside(url) } }
+    contents.on('will-navigate', guard)
+    contents.on('will-redirect', guard)
+    // Sign-in pop-ups open over the panel; every other new-window link goes to your normal browser.
+    contents.setWindowOpenHandler(({ url }) => {
+      if (inFeed(url)) return { action: 'allow', overrideBrowserWindowOptions: { parent: win, autoHideMenuBar: true } }
+      openOutside(url)
+      return { action: 'deny' }
+    })
+  })
 
   const { workArea } = screen.getPrimaryDisplay()
   // The width you dragged it to last time, kept next to the feed's cookies.
   const sizeFile = path.join(app.getPath('userData'), 'width.json')
   let width = Math.round(workArea.height * ASPECT)
   try { width = JSON.parse(fs.readFileSync(sizeFile, 'utf8')) } catch {}
+  // A corrupt file, or a width saved on a bigger screen, must never put the panel off-screen.
+  width = Number.isFinite(width) ? Math.min(Math.max(Math.round(width), MIN_WIDTH), Math.round(workArea.width * 0.6)) : Math.round(workArea.height * ASPECT)
   const win = new BrowserWindow({
     x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height,
-    frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
+    minWidth: MIN_WIDTH, frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), autoplayPolicy: 'no-user-gesture-required' },
   })
   win.loadFile('index.html')
@@ -51,14 +71,6 @@ app.whenReady().then(() => {
     views[name] = new WebContentsView({ webPreferences: { session: feed } })
     views[name].setBackgroundColor(BG)
     views[name].webContents.loadURL(url)
-    // Sign-in pop-ups open over the panel; every other new-window link goes to your normal browser.
-    views[name].webContents.setWindowOpenHandler(({ url }) => {
-      const host = url.startsWith('https://') && new URL(url).hostname
-      if (host && SIGN_IN.some(d => host === d || host.endsWith('.' + d)))
-        return { action: 'allow', overrideBrowserWindowOptions: { parent: win, autoHideMenuBar: true } }
-      if (host) shell.openExternal(url)
-      return { action: 'deny' }
-    })
   }
   let current = 'x'
   const layout = () => {

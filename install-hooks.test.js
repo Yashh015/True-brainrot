@@ -39,3 +39,10 @@ test('missing settings.json is created, and a backup kept otherwise', () => {
   install(file)
   assert.ok(fs.existsSync(file + '.bak'))
 })
+
+test('re-running keeps the backup of your original settings', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sc-')), 'settings.json')
+  fs.writeFileSync(file, '{"model":"opus"}')
+  install(file); install(file)
+  assert.strictEqual(fs.readFileSync(file + '.bak', 'utf8'), '{"model":"opus"}')
+})

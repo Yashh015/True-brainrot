@@ -23,7 +23,8 @@ function merge(settings) {
 function install(file = path.join(os.homedir(), '.claude', 'settings.json')) {
   const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '{}'
   const settings = JSON.parse(text) // a broken file throws here, before anything is written
-  if (fs.existsSync(file)) fs.writeFileSync(file + '.bak', text)
+  // The backup is taken once: a re-run must not replace your original with an already-edited copy.
+  if (fs.existsSync(file) && !fs.existsSync(file + '.bak')) fs.writeFileSync(file + '.bak', text)
   fs.writeFileSync(file, JSON.stringify(merge(settings), null, 2) + '\n')
 }
 

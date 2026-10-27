@@ -50,9 +50,11 @@ function createCompanion(ui, schedule) {
       else if (name === 'attention') handBack('attention')
       else if (name === 'end') hide()
     },
-    open: show,
+    // Opening it yourself shows it wherever you are, so the first-run login works and Ctrl+Q
+    // never looks dead; it still steps aside the next time another app comes to the front.
+    open() { present = true; show() },
     close: hide,
-    toggleOpen() { shown ? hide() : show() },
+    toggleOpen() { shown && present ? hide() : this.open() },
     snooze() {
       if (hideTimer) { cancel(hideTimer); hideTimer = schedule(hide, SNOOZE) }
     },
