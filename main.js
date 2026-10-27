@@ -1,15 +1,16 @@
 const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell } = require('electron')
+const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
 const { PORT } = require('./install-hooks')
 
-const WIDTH = 0.3 // share of the screen, docked right
+const WIDTH = 0.3 // starting share of the screen, docked right; drag the left edge to change it
 const BAR = 36 // height of the tab/banner bar in index.html
 const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
 const SLIDE_MS = 180 // slide in/out from the right edge
-const OPEN_KEY = 'Ctrl+E' // open the feed yourself; press again to close it
+const OPEN_KEY = 'Super+Y' // Win+Y; Windows keeps Win+Z for itself. Open the feed yourself; press again to close it
 // X and Instagram treat Electron's own user agent as unusual.
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 // Sign-in pop-ups from these stay in the panel, so the login lands in the feed session.
@@ -27,7 +28,10 @@ app.whenReady().then(() => {
   feed.setPermissionCheckHandler(() => false)
 
   const { workArea } = screen.getPrimaryDisplay()
-  const width = Math.round(workArea.width * WIDTH)
+  // The width you dragged it to last time, kept next to the feed's cookies.
+  const sizeFile = path.join(app.getPath('userData'), 'width.json')
+  let width = Math.round(workArea.width * WIDTH)
+  try { width = JSON.parse(fs.readFileSync(sizeFile, 'utf8')) } catch {}
   const win = new BrowserWindow({
     x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height,
     frame: false, show: false, skipTaskbar: true, alwaysOnTop: true,
@@ -57,6 +61,7 @@ app.whenReady().then(() => {
   win.contentView.addChildView(views[current])
   layout()
   win.on('resize', layout)
+  win.on('resized', () => fs.writeFile(sizeFile, JSON.stringify(win.getSize()[0]), () => {}))
 
   const pauseVideo = () => {
     for (const v of Object.values(views))
@@ -64,7 +69,7 @@ app.whenReady().then(() => {
   }
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
-  const inX = workArea.x + workArea.width - width
+  const inX = () => workArea.x + workArea.width - win.getSize()[0]
   const outX = workArea.x + workArea.width
   let slide = null
   const slideTo = (to, done) => {
@@ -82,7 +87,7 @@ app.whenReady().then(() => {
     show: () => {
       win.webContents.send('alert', null)
       if (!win.isVisible()) { win.setPosition(outX, workArea.y); win.showInactive() } // never steal focus from Claude
-      slideTo(inX)
+      slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
     hide: () => { pauseVideo(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
