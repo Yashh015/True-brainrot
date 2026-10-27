@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('companion', {
   onAlert: fn => ipcRenderer.on('alert', (_, kind) => fn(kind)),
   onAccess: fn => ipcRenderer.on('access', (_, view) => fn(view)),
   signIn: email => ipcRenderer.send('sign-in', email),
+  verifyCode: code => ipcRenderer.send('verify-code', code),
   refresh: () => ipcRenderer.send('refresh'),
   subscribe: () => ipcRenderer.send('subscribe'),
   removeDevice: id => ipcRenderer.send('remove-device', id),

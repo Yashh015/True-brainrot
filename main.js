@@ -7,7 +7,7 @@ const { watchClaude, noFade } = require('./winwatch')
 const { inFeed, isWebLink, leavesFeed } = require('./links')
 const { PORT } = require('./install-hooks')
 const { toSetDetails } = require('./cookies')
-const { createAccount, LINK } = require('./account')
+const { createAccount } = require('./account')
 const CONFIG = require('./config.json') // the Supabase project, written from .env by make-config.js
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
@@ -231,6 +231,7 @@ app.whenReady().then(() => {
   const refresh = () => account.refresh().catch(() => {}).finally(applyAccess)
 
   ipcMain.on('sign-in', (_, email) => account.signIn(String(email).trim()).catch(() => {}))
+  ipcMain.on('verify-code', (_, code) => account.verifyCode(String(code).replace(/\D/g, '')).catch(() => {}))
   ipcMain.on('refresh', refresh)
   ipcMain.on('remove-device', (_, id) => account.removeDevice(String(id)).catch(() => {}))
   ipcMain.on('sign-out', () => account.signOut().catch(() => {}))
@@ -277,15 +278,8 @@ app.whenReady().then(() => {
   // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
   app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
 
-  // Windows opens truebrainrot:// links (the sign-in email) with this app; a running copy gets them
-  // through second-instance, a copy started by the link finds it in its own arguments.
-  app.setAsDefaultProtocolClient('truebrainrot', process.execPath, app.isPackaged ? [] : [app.getAppPath()])
-  const openLink = argv => {
-    const link = argv.find(arg => arg.startsWith(LINK))
-    if (link) { companion.open(); account.openLink(link).catch(() => {}) }
-  }
-  app.on('second-instance', (_, argv) => openLink(argv))
-  openLink(process.argv)
+  // Starting True Brainrot again (Start menu, a desktop shortcut) while it already runs opens the panel.
+  app.on('second-instance', () => companion.open())
 
   refresh()
   setInterval(refresh, 6 * 60 * 60 * 1000) // a cancelled or renewed subscription shows up within 6 h

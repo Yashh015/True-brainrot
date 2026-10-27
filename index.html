@@ -92,13 +92,18 @@
   const screens = {
     'signed-out': view => view.sent
       ? [el('h1', { textContent: 'Check your email' }),
-         el('p', { textContent: `We sent a sign-in link to ${view.sent}. Open it on this PC.` }),
+         el('p', { textContent: `Type the code we sent to ${view.sent}.` }),
+         el('form', { onsubmit: event => { event.preventDefault(); companion.verifyCode(event.target.code.value) } },
+           el('input', { name: 'code', required: true, inputMode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9 ]{6,10}', maxLength: 12, placeholder: '123456', autofocus: true,
+             style: 'width:100%;box-sizing:border-box;margin-bottom:10px;letter-spacing:.3em;text-align:center;font-size:20px' }),
+           el('button', { type: 'submit', textContent: 'Sign in', className: 'primary', style: 'width:100%' })),
+         button('Send new code', () => companion.signIn(view.sent)),
          button('Change email', () => companion.signOut())]
       : [el('h1', { textContent: 'Sign in to True Brainrot' }),
          el('p', { textContent: 'Your 7-day free trial starts when you sign in. No card needed.' }),
          el('form', { onsubmit: event => { event.preventDefault(); companion.signIn(event.target.email.value) } },
            el('input', { name: 'email', type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', style: 'width:100%;box-sizing:border-box;margin-bottom:10px' }),
-           el('button', { type: 'submit', textContent: 'Send link', className: 'primary', style: 'width:100%' }))],
+           el('button', { type: 'submit', textContent: 'Send code', className: 'primary', style: 'width:100%' }))],
     'trial-ended': () => [el('h1', { textContent: 'Your free trial has ended' }),
       el('p', { textContent: 'Subscribe to keep scrolling while Claude works.' }), button('Subscribe', () => companion.subscribe(), true)],
     'cancelled': () => [el('h1', { textContent: 'Your subscription has ended' }),

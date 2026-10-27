@@ -1,4 +1,4 @@
-// Sign-in by email link, the subscription status and this PC's place in the 2-device limit.
+// Sign-in by a code emailed to you, the subscription status and this PC's place in the 2-device limit.
 // Everything is kept in one file encrypted by Windows (safeStorage), so a copied file is useless.
 const { safeStorage } = require('electron')
 const { createClient } = require('@supabase/supabase-js')
@@ -8,8 +8,6 @@ const os = require('os')
 const path = require('path')
 const { canUse } = require('./access')
 
-const LINK = 'truebrainrot://auth'
-
 function createAccount({ url, anonKey, dir, onChange }) {
   const file = path.join(dir, 'account.bin')
   let store = {}
@@ -18,7 +16,7 @@ function createAccount({ url, anonKey, dir, onChange }) {
   const save = () => { write(); onChange() }
   if (!store.deviceId) { store.deviceId = crypto.randomUUID(); write() }
 
-  // supabase-js keeps the session and the sign-in link's PKCE verifier through this.
+  // supabase-js keeps the session through this.
   const storage = {
     getItem: key => store[key] ?? null,
     setItem: (key, value) => { store[key] = value; save() },
@@ -62,28 +60,26 @@ function createAccount({ url, anonKey, dir, onChange }) {
       return { ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), sent: store.sent, error }
     },
 
+    // Emails a code (the Magic Link template must show {{ .Token }}). A code, not a link: a link
+    // opens the browser, flashes it, then has to find its way back into the app.
     async signIn(email) {
       error = null
-      const { error: failed } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: LINK } })
+      const { error: failed } = await supabase.auth.signInWithOtp({ email })
       if (failed) error = failed.message
       else store.sent = email
       save()
     },
 
-    // The email link, handed over by Windows: truebrainrot://auth?code=... (or ?error_description=...).
-    async openLink(link) {
-      if (!link?.startsWith(LINK)) return false
-      const params = new URL(link).searchParams
-      error = params.get('error_description')
-      const code = params.get('code')
-      if (code) {
-        const { data, error: failed } = await supabase.auth.exchangeCodeForSession(code)
-        // Opened on another PC than the one that asked: that PC holds the verifier, this one doesn't.
-        if (failed) error = 'Open the link on the PC where you asked for it, or ask for a new one.'
-        else { store.email = data.user.email; delete store.sent; error = null; await refresh() }
-      }
+    // The code from that email, typed into the panel.
+    async verifyCode(code) {
+      if (!store.sent) return
+      const { data, error: failed } = await supabase.auth.verifyOtp({ email: store.sent, token: code, type: 'email' })
+      if (failed) { error = 'That code didn\'t work. Check it, or send a new one.'; return save() }
+      store.email = data.user.email
+      delete store.sent
+      error = null
+      await refresh()
       save()
-      return true
     },
 
     async removeDevice(deviceId) {
@@ -107,4 +103,4 @@ function createAccount({ url, anonKey, dir, onChange }) {
   }
 }
 
-module.exports = { createAccount, LINK }
+module.exports = { createAccount }
