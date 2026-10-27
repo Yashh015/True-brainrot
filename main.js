@@ -1,4 +1,5 @@
 const { app, BrowserWindow, WebContentsView, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
+const { spawn } = require('child_process')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
@@ -125,6 +126,21 @@ app.whenReady().then(() => {
     dialog.showErrorBox('Scroll Companion', `Can't listen on port ${PORT}: ${err.message}`)
     app.quit()
   }).listen(PORT, '127.0.0.1')
+
+  // The feed belongs to Claude: when its window is closed to the tray or minimised, the
+  // panel goes too. Electron can't see other apps' windows, so one PowerShell child reports
+  // every 2 s. .NET only fills MainWindowTitle for a visible window, which is what tells
+  // "closed to tray" apart from "open". It exits on its own if this app dies.
+  // ponytail: a show while Claude is down flashes for up to 2 s before this closes it.
+  const watcher = spawn('powershell', ['-NoProfile', '-Command', `
+    Add-Type 'using System; using System.Runtime.InteropServices; public class U { [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); }'
+    while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
+      $w = Get-Process claude -ErrorAction SilentlyContinue | Where-Object MainWindowTitle -eq 'Claude' | Select-Object -First 1
+      if ($w -and -not [U]::IsIconic($w.MainWindowHandle)) { 'up' } else { 'down' }
+      Start-Sleep -Seconds 2
+    }`], { windowsHide: true })
+  watcher.stdout.on('data', d => { if (String(d).includes('down')) companion.close() })
+  app.on('will-quit', () => watcher.kill())
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
