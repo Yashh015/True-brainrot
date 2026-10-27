@@ -11,6 +11,8 @@ const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may p
 const OPEN_KEY = 'Ctrl+Alt+S' // open the feed yourself; press again to close it
 // X and Instagram treat Electron's own user agent as unusual.
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+// Sign-in pop-ups from these stay in the panel, so the login lands in the feed session.
+const SIGN_IN = ['x.com', 'twitter.com', 'instagram.com', 'facebook.com', 'accounts.google.com', 'appleid.apple.com']
 const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
 
 // A second copy would crash on the busy port; let the first one win.
@@ -37,9 +39,12 @@ app.whenReady().then(() => {
   for (const [name, url] of Object.entries(SITES)) {
     views[name] = new WebContentsView({ webPreferences: { session: feed } })
     views[name].webContents.loadURL(url)
-    // Links that open a new window go to your normal browser, never a second Electron window.
+    // Sign-in pop-ups open over the panel; every other new-window link goes to your normal browser.
     views[name].webContents.setWindowOpenHandler(({ url }) => {
-      if (url.startsWith('https://')) shell.openExternal(url)
+      const host = url.startsWith('https://') && new URL(url).hostname
+      if (host && SIGN_IN.some(d => host === d || host.endsWith('.' + d)))
+        return { action: 'allow', overrideBrowserWindowOptions: { parent: win, autoHideMenuBar: true } }
+      if (host) shell.openExternal(url)
       return { action: 'deny' }
     })
   }
