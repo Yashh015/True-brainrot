@@ -7,6 +7,8 @@ const { watchClaude, noFade } = require('./winwatch')
 const { inFeed, isWebLink } = require('./links')
 const { PORT } = require('./install-hooks')
 const { toSetDetails } = require('./cookies')
+const { createAccount, LINK } = require('./account')
+const CONFIG = require('./config.json') // the Supabase project, written from .env by make-config.js
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
 // Chrome's own zoom steps, so Ctrl+wheel and Ctrl+= / - feel the same as in a browser.
@@ -83,20 +85,19 @@ app.whenReady().then(() => {
     .then(all => Promise.all(all.map(c => feed.cookies.set(toSetDetails(c)).catch(() => {}))))
     .then(() => feed.cookies.flushStore()).catch(() => {})
 
-  // One view per site, kept alive while detached so each keeps its scroll position.
+  // One view per site, kept alive while detached so each keeps its scroll position. Nothing loads
+  // until the account allows the feed (applyAccess below), so a locked panel never runs X or Instagram.
   const views = {}
-  for (const [name, url] of Object.entries(SITES)) {
+  for (const name of Object.keys(SITES)) {
     views[name] = new WebContentsView({ webPreferences: { session: feed } })
     views[name].setBackgroundColor(BG)
-    encrypted.then(() => views[name].webContents.loadURL(url)).catch(() => {}) // did-fail-load retries
   }
   let current = 'x'
+  let feedOn = false
   const layout = () => {
     const [w, h] = win.getContentSize()
     views[current].setBounds({ x: BORDER, y: BAR, width: w - 2 * BORDER, height: h - BAR - BORDER })
   }
-  win.contentView.addChildView(views[current])
-  layout()
   win.on('resize', layout)
   win.on('resized', () => {
     width = win.getSize()[0]
@@ -138,7 +139,7 @@ app.whenReady().then(() => {
     // At Windows sign-in the app often starts before the network is up, leaving a blank feed.
     // Try again every few seconds; -3 is a navigation the page or you cancelled, not a failure.
     page.on('did-fail-load', (_, code, __, url, isMainFrame) => {
-      if (isMainFrame && code !== -3) setTimeout(() => page.loadURL(url), 3000)
+      if (isMainFrame && code !== -3) setTimeout(() => { if (feedOn) page.loadURL(url) }, 3000)
     })
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
@@ -197,11 +198,47 @@ app.whenReady().then(() => {
 
   ipcMain.on('tab', (_, name) => {
     if (!views[name] || name === current) return
-    win.contentView.removeChildView(views[current])
+    if (feedOn) win.contentView.removeChildView(views[current])
     current = name
-    win.contentView.addChildView(views[current])
+    if (feedOn) win.contentView.addChildView(views[current])
     layout()
     showZoom()
+  })
+
+  // The feed shows only while the account allows it; otherwise index.html shows the gate screen.
+  const account = createAccount({ ...CONFIG, dir: app.getPath('userData'), onChange: () => applyAccess() })
+  const applyAccess = () => {
+    const view = account.view()
+    win.webContents.send('access', view)
+    if (view.ok === feedOn) return
+    feedOn = view.ok
+    if (feedOn) {
+      for (const [name, url] of Object.entries(SITES))
+        encrypted.then(() => views[name].webContents.loadURL(url)).catch(() => {}) // did-fail-load retries
+      win.contentView.addChildView(views[current])
+      layout()
+    } else {
+      pauseVideo()
+      win.contentView.removeChildView(views[current])
+      for (const v of Object.values(views)) v.webContents.loadURL('about:blank').catch(() => {})
+    }
+  }
+  win.webContents.on('did-finish-load', applyAccess)
+  const refresh = () => account.refresh().catch(() => {}).finally(applyAccess)
+
+  ipcMain.on('sign-in', (_, email) => account.signIn(String(email).trim()).catch(() => {}))
+  ipcMain.on('refresh', refresh)
+  ipcMain.on('remove-device', (_, id) => account.removeDevice(String(id)).catch(() => {}))
+  ipcMain.on('sign-out', () => account.signOut().catch(() => {}))
+  ipcMain.on('subscribe', async () => {
+    const url = await account.checkoutUrl().catch(() => null)
+    if (!url) return win.webContents.send('access', { ...account.view(), error: 'Subscriptions open soon.' })
+    openOutside(url)
+    // The payment reaches the server within seconds or so: look for it for 2 minutes.
+    for (let i = 0; i < 12 && !account.view().ok; i++) {
+      await new Promise(done => setTimeout(done, 10000))
+      await refresh()
+    }
   })
   ipcMain.on('snooze', () => companion.snooze())
   ipcMain.on('minimise', () => companion.close())
@@ -235,6 +272,20 @@ app.whenReady().then(() => {
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
   // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
   app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
+
+  // Windows opens truebrainrot:// links (the sign-in email) with this app; a running copy gets them
+  // through second-instance, a copy started by the link finds it in its own arguments.
+  app.setAsDefaultProtocolClient('truebrainrot', process.execPath, app.isPackaged ? [] : [app.getAppPath()])
+  const openLink = argv => {
+    const link = argv.find(arg => arg.startsWith(LINK))
+    if (link) { companion.open(); account.openLink(link).catch(() => {}) }
+  }
+  app.on('second-instance', (_, argv) => openLink(argv))
+  openLink(process.argv)
+
+  refresh()
+  setInterval(refresh, 6 * 60 * 60 * 1000) // a cancelled or renewed subscription shows up within 6 h
+  setInterval(applyAccess, 60 * 1000) // a trial ending mid-session locks within a minute
 
   companion.start() // shown beside Claude on first launch so you can log in; never over the desktop
 })

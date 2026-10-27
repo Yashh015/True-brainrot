@@ -7,16 +7,39 @@
   "private": true,
   "main": "main.js",
   "scripts": {
+    "prestart": "node make-config.js",
     "start": "electron .",
     "test": "node --test",
+    "predist": "node make-config.js",
     "dist": "electron-builder --win"
   },
   "build": {
     "appId": "net.unitedinstruments.truebrainrot",
-    "files": ["main.js", "preload.js", "index.html", "state.js", "winwatch.js", "links.js", "install-hooks.js", "cookies.js"],
-    "asarUnpack": ["node_modules/koffi/**"],
-    "win": { "target": "nsis", "requestedExecutionLevel": "asInvoker" },
-    "nsis": { "oneClick": true, "perMachine": false, "allowElevation": false },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "state.js",
+      "winwatch.js",
+      "links.js",
+      "install-hooks.js",
+      "cookies.js",
+      "access.js",
+      "account.js",
+      "config.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false
+    },
     "electronFuses": {
       "runAsNode": false,
       "enableCookieEncryption": true,
@@ -33,6 +56,7 @@
     "electron-builder": "26.17.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
     "koffi": "3.3.3"
   }
 }

@@ -16,6 +16,16 @@
   #banner { display: none; align-items: center; gap: 6px; margin-right: 4px; padding-left: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text) }
   #banner.attention { border-color: #b4552d }
   #banner button { height: 26px; padding: 0 8px }
+  /* The gate: shown under the bar, in place of the feed, while the account doesn't allow it. */
+  #gate { padding: 40px 28px; display: grid; gap: 14px; max-width: 360px; margin: 0 auto }
+  #gate h1 { margin: 0; font-size: 20px; font-weight: 600 }
+  #gate p { margin: 0; color: var(--muted); line-height: 1.5 }
+  #gate input { height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--hover); color: var(--text); font: inherit }
+  #gate .primary { height: 36px; background: var(--text); color: var(--bg); font-weight: 600 }
+  #gate .primary:hover { background: #fff }
+  #gate .device { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px }
+  #gate .error { color: #e2795a }
+  body.locked [data-tab], body.locked #zoom { display: none !important }
 </style>
 <header>
   <button data-tab="x" class="on icon" title="X" aria-label="X">
@@ -34,7 +44,50 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l8 8M12 4l-8 8"/></svg>
   </button>
 </header>
+<main id="gate" hidden></main>
 <script>
+  // Every screen is built from text nodes, never HTML strings: device names come from the server.
+  const el = (tag, props = {}, ...kids) => {
+    const node = Object.assign(document.createElement(tag), props)
+    node.append(...kids)
+    return node
+  }
+  const button = (text, onclick, primary) => el('button', { textContent: text, onclick, className: primary ? 'primary' : '' })
+
+  const screens = {
+    'signed-out': view => view.sent
+      ? [el('h1', { textContent: 'Check your email' }),
+         el('p', { textContent: `We sent a sign-in link to ${view.sent}. Open it on this PC.` }),
+         button('Use a different email', () => companion.signOut())]
+      : [el('h1', { textContent: 'Sign in to True Brainrot' }),
+         el('p', { textContent: 'Your 7-day free trial starts when you sign in. No card needed.' }),
+         el('form', { onsubmit: event => { event.preventDefault(); companion.signIn(event.target.email.value) } },
+           el('input', { name: 'email', type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', style: 'width:100%;box-sizing:border-box;margin-bottom:10px' }),
+           el('button', { type: 'submit', textContent: 'Email me a sign-in link', className: 'primary', style: 'width:100%' }))],
+    'trial-ended': () => [el('h1', { textContent: 'Your free trial has ended' }),
+      el('p', { textContent: 'Subscribe to keep scrolling while Claude works.' }), button('Subscribe', () => companion.subscribe(), true)],
+    'cancelled': () => [el('h1', { textContent: 'Your subscription has ended' }),
+      el('p', { textContent: 'Subscribe again to bring the feed back.' }), button('Subscribe', () => companion.subscribe(), true)],
+    'payment-failed': () => [el('h1', { textContent: 'Your last payment didn\'t go through' }),
+      el('p', { textContent: 'Update your payment details to keep the feed.' }), button('Update payment', () => companion.subscribe(), true)],
+    'offline-too-long': () => [el('h1', { textContent: 'Connect to the internet' }),
+      el('p', { textContent: 'True Brainrot checks your subscription every few days.' }), button('Try again', () => companion.refresh(), true)],
+    'device-limit': view => [el('h1', { textContent: 'Signed in on 2 PCs already' }),
+      el('p', { textContent: 'Sign out one of them to use True Brainrot here.' }),
+      ...view.devices.map(d => el('div', { className: 'device' }, el('span', { textContent: d.name }), button('Sign out that PC', () => companion.removeDevice(d.device_id))))],
+  }
+
+  // Re-built only when something changed, so a half-typed email survives the minute-by-minute check.
+  let shownGate = ''
+  companion.onAccess(view => {
+    document.body.classList.toggle('locked', !view.ok)
+    gate.hidden = view.ok
+    const key = JSON.stringify([view.reason, view.sent, view.error, view.devices])
+    if (view.ok || key === shownGate) return
+    shownGate = key
+    gate.replaceChildren(...screens[view.reason](view), ...(view.error ? [el('p', { className: 'error', textContent: view.error })] : []))
+  })
+
   const tabs = document.querySelectorAll('[data-tab]')
   tabs.forEach(b => b.onclick = () => {
     tabs.forEach(t => t.classList.toggle('on', t === b))
