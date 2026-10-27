@@ -12,7 +12,7 @@ const BG = '#1f1f1f' // Claude desktop's pane colour, so a slow page load never 
 const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
 const SLIDE_MS = 180 // slide in/out from the right edge
-const OPEN_KEY = 'Super+Y' // Win+Y; Windows keeps Win+Z for itself. Open the feed yourself; press again to close it
+const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Global, so other apps lose Ctrl+Q while this runs
 // X and Instagram treat Electron's own user agent as unusual.
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 // Sign-in pop-ups from these stay in the panel, so the login lands in the feed session.
