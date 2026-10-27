@@ -95,14 +95,28 @@ app.whenReady().then(() => {
     }, 16)
   }
 
+  let claudeMinimised = false // how Claude last left, so the panel leaves the same way
   const companion = createCompanion({
     show: () => {
       win.webContents.send('alert', null)
-      if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
+      if (win.isMinimized()) win.showInactive() // left minimised with Claude: restore in place, Windows animates it
+      else if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
       slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
     hide: () => { pauseVideo(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
+    // Following Claude out and back uses Windows' own animations, the same ones Claude's window
+    // gets: minimise with its minimise, vanish with its close or switch-away.
+    leave: () => {
+      clearInterval(slide)
+      pauseVideo()
+      claudeMinimised ? win.minimize() : win.hide()
+    },
+    back: () => {
+      clearInterval(slide)
+      if (!win.isMinimized()) place(inX())
+      win.showInactive()
+    },
     isIdle: () => powerMonitor.getSystemIdleTime() >= IDLE_AFTER, // planning = typing/reading, so it stays away
   }, (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t) })
 
@@ -129,12 +143,16 @@ app.whenReady().then(() => {
 
   // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
   // tray, and the panel steps out of sight at once; come back and it returns.
-  const stopWatching = watchClaude(present => companion.setPresent(present))
+  const stopWatching = watchClaude((present, minimised) => {
+    if (!present) claudeMinimised = minimised
+    companion.setPresent(present)
+  })
   app.on('will-quit', stopWatching)
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
-  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: [app.getAppPath()] })
+  // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
+  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
 
   companion.open() // shown on start so you can log in
 })

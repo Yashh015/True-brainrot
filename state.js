@@ -61,7 +61,8 @@ function createCompanion(ui, schedule) {
     setPresent(now) {
       if (now === present) return
       present = now
-      if (shown) now ? ui.show() : ui.hide()
+      // leave/back move with Claude's own animation; the slide is for the panel's own comings and goings.
+      if (shown) now ? (ui.back || ui.show)() : (ui.leave || ui.hide)()
     },
     toggleEnabled() {
       enabled = !enabled

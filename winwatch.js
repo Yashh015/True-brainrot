@@ -41,7 +41,8 @@ function exePath(pid) {
 const isClaudeApp = path => /\\claude\.exe$/i.test(path) && !/\\claude-code\\/i.test(path)
 
 // onChange(true) when Claude or this panel is in front, onChange(false) when anything else is.
-// Returns a stop function.
+// The second argument says the leaving was Claude minimising, so the panel can copy the
+// animation. Returns a stop function.
 function watchClaude(onChange) {
   const claudePids = new Map() // ponytail: pids are cached forever; a reused pid could misjudge until restart
   const isClaude = pid => {
@@ -54,13 +55,13 @@ function watchClaude(onChange) {
   }
 
   let last = null
-  const report = present => { if (present !== last) { last = present; onChange(present) } }
+  const report = (present, minimised = false) => { if (present !== last) { last = present; onChange(present, minimised) } }
 
   const callback = koffi.register((hook, event, hwnd, idObject) => {
     if (idObject !== 0) return // OBJID_WINDOW only: the window itself, not a control inside it
     if (event === EVENT_SYSTEM_FOREGROUND) report(ours(hwnd))
     // A minimise can leave no window in front, so no foreground event follows: catch it directly.
-    else if (event === EVENT_SYSTEM_MINIMIZESTART && isClaude(ownerPid(hwnd))) report(false)
+    else if (event === EVENT_SYSTEM_MINIMIZESTART && isClaude(ownerPid(hwnd))) report(false, true)
     else if (event === EVENT_SYSTEM_MINIMIZEEND && isClaude(ownerPid(hwnd))) report(true)
   }, koffi.pointer(WinEventProc))
 

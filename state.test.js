@@ -149,6 +149,16 @@ test('Claude finishing while you are away chimes, and the panel stays gone when 
   assert.deepStrictEqual(log, ['show', 'hide', 'alert:done'])
 })
 
+test('following Claude out and back uses leave/back, not the slide', () => {
+  const log = []
+  const c = createCompanion({
+    show: () => log.push('show'), hide: () => log.push('hide'), alert: () => {},
+    leave: () => log.push('leave'), back: () => log.push('back'),
+  }, () => () => {})
+  c.open(); c.setPresent(false); c.setPresent(true); c.close()
+  assert.deepStrictEqual(log, ['show', 'leave', 'back', 'hide'])
+})
+
 test('a closed panel stays closed when you come back to Claude', () => {
   const { c, log } = rig()
   c.setPresent(false); c.setPresent(true)
