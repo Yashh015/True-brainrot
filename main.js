@@ -6,6 +6,7 @@ const { createCompanion } = require('./state')
 const { watchClaude, noFade } = require('./winwatch')
 const { inFeed, isWebLink } = require('./links')
 const { PORT } = require('./install-hooks')
+const { toSetDetails } = require('./cookies')
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
 // Chrome's own zoom steps, so Ctrl+wheel and Ctrl+= / - feel the same as in a browser.
@@ -143,6 +144,10 @@ app.whenReady().then(() => {
   // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
   // loses a login you just made. Write them now, each time the panel steps away and on quit.
   const saveLogins = () => feed.cookies.flushStore().catch(() => {})
+  // Logins saved before encryption was switched on are still plain text on disk: write them back.
+  feed.cookies.get({})
+    .then(all => Promise.all(all.map(c => feed.cookies.set(toSetDetails(c)).catch(() => {}))))
+    .then(saveLogins)
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
   // Every move re-states the size: at 125% scaling setPosition alone rounds the width
@@ -225,7 +230,7 @@ app.whenReady().then(() => {
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
   // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
-  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
+  app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
 
   companion.start() // shown beside Claude on first launch so you can log in; never over the desktop
 })

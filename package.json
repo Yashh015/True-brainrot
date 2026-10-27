@@ -13,10 +13,10 @@
   },
   "build": {
     "appId": "net.unitedinstruments.truebrainrot",
-    "files": ["main.js", "preload.js", "index.html", "state.js", "winwatch.js", "links.js", "install-hooks.js"],
+    "files": ["main.js", "preload.js", "index.html", "state.js", "winwatch.js", "links.js", "install-hooks.js", "cookies.js"],
     "asarUnpack": ["node_modules/koffi/**"],
-    "win": { "target": "nsis" },
-    "nsis": { "oneClick": true, "perMachine": false },
+    "win": { "target": "nsis", "requestedExecutionLevel": "asInvoker" },
+    "nsis": { "oneClick": true, "perMachine": false, "allowElevation": false },
     "electronFuses": {
       "runAsNode": false,
       "enableCookieEncryption": true,
