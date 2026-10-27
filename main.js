@@ -8,7 +8,8 @@ const WIDTH = 0.3 // share of the screen, docked right
 const BAR = 36 // height of the tab/banner bar in index.html
 const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
-const OPEN_KEY = 'Ctrl+Alt+S' // open the feed yourself; press again to close it
+const SLIDE_MS = 180 // slide in/out from the right edge
+const OPEN_KEY = 'Ctrl+E' // open the feed yourself; press again to close it
 // X and Instagram treat Electron's own user agent as unusual.
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 // Sign-in pop-ups from these stay in the panel, so the login lands in the feed session.
@@ -62,10 +63,29 @@ app.whenReady().then(() => {
       v.webContents.executeJavaScript("document.querySelectorAll('video').forEach(v => v.pause())").catch(() => {})
   }
 
+  // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
+  const inX = workArea.x + workArea.width - width
+  const outX = workArea.x + workArea.width
+  let slide = null
+  const slideTo = (to, done) => {
+    clearInterval(slide)
+    const from = win.getPosition()[0]
+    const start = Date.now()
+    slide = setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / SLIDE_MS)
+      win.setPosition(Math.round(from + (to - from) * (1 - (1 - t) ** 3)), workArea.y) // ease-out
+      if (t === 1) { clearInterval(slide); if (done) done() }
+    }, 16)
+  }
+
   const companion = createCompanion({
-    show: () => { win.webContents.send('alert', null); win.showInactive() }, // never steal focus from Claude
+    show: () => {
+      win.webContents.send('alert', null)
+      if (!win.isVisible()) { win.setPosition(outX, workArea.y); win.showInactive() } // never steal focus from Claude
+      slideTo(inX)
+    },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
-    hide: () => { pauseVideo(); win.hide() }, // hiding hands focus back to the Claude window
+    hide: () => { pauseVideo(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
     isIdle: () => powerMonitor.getSystemIdleTime() >= IDLE_AFTER, // planning = typing/reading, so it stays away
   }, (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t) })
 
