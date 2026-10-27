@@ -72,7 +72,9 @@ app.whenReady().then(() => {
     minWidth: MIN_WIDTH, frame: false, show: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: BG,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), autoplayPolicy: 'no-user-gesture-required' },
   })
-  win.loadFile('index.html')
+  // The built app switches off file:// pages' extra powers (grantFileProtocolExtraPrivileges fuse),
+  // which leaves a loadFile page blank. Handing over the HTML itself needs no file access at all.
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')))
   noFade(win.getNativeWindowHandle())
 
   // Logins saved before encryption was switched on are still plain text on disk: write them back.
