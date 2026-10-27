@@ -3,7 +3,7 @@ const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
-const { watchClaude } = require('./winwatch')
+const { watchClaude, noFade } = require('./winwatch')
 const { PORT } = require('./install-hooks')
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
@@ -43,6 +43,7 @@ app.whenReady().then(() => {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), autoplayPolicy: 'no-user-gesture-required' },
   })
   win.loadFile('index.html')
+  noFade(win.getNativeWindowHandle())
 
   // One view per site, kept alive while detached so each keeps its scroll position.
   const views = {}
@@ -95,26 +96,24 @@ app.whenReady().then(() => {
     }, 16)
   }
 
-  let claudeMinimised = false // how Claude last left, so the panel leaves the same way
   const companion = createCompanion({
     show: () => {
       win.webContents.send('alert', null)
-      if (win.isMinimized()) win.showInactive() // left minimised with Claude: restore in place, Windows animates it
-      else if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
+      if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
       slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
     hide: () => { pauseVideo(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
-    // Following Claude out and back uses Windows' own animations, the same ones Claude's window
-    // gets: minimise with its minimise, vanish with its close or switch-away.
+    // Following Claude out and back is instant, no slide and no fade: copying Claude's own
+    // minimise animation looked a beat slow, so the panel is gone the moment Claude starts to go.
     leave: () => {
       clearInterval(slide)
       pauseVideo()
-      claudeMinimised ? win.minimize() : win.hide()
+      win.hide()
     },
     back: () => {
       clearInterval(slide)
-      if (!win.isMinimized()) place(inX())
+      place(inX())
       win.showInactive()
     },
     isIdle: () => powerMonitor.getSystemIdleTime() >= IDLE_AFTER, // planning = typing/reading, so it stays away
@@ -143,10 +142,7 @@ app.whenReady().then(() => {
 
   // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
   // tray, and the panel steps out of sight at once; come back and it returns.
-  const stopWatching = watchClaude((present, minimised) => {
-    if (!present) claudeMinimised = minimised
-    companion.setPresent(present)
-  })
+  const stopWatching = watchClaude(present => companion.setPresent(present))
   app.on('will-quit', stopWatching)
 
   globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())

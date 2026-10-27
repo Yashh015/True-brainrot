@@ -6,6 +6,7 @@ const koffi = require('koffi')
 
 const user32 = koffi.load('user32.dll')
 const kernel32 = koffi.load('kernel32.dll')
+const dwmapi = koffi.load('dwmapi.dll')
 
 const WinEventProc = koffi.proto('void __stdcall WinEventProc(void *hook, uint32 event, void *hwnd, long idObject, long idChild, uint32 thread, uint32 time)')
 const SetWinEventHook = user32.func('void * __stdcall SetWinEventHook(uint32 min, uint32 max, void *mod, WinEventProc *proc, uint32 pid, uint32 thread, uint32 flags)')
@@ -15,6 +16,8 @@ const GetWindowThreadProcessId = user32.func('uint32 __stdcall GetWindowThreadPr
 const OpenProcess = kernel32.func('void * __stdcall OpenProcess(uint32 access, bool inherit, uint32 pid)')
 const QueryFullProcessImageNameW = kernel32.func('bool __stdcall QueryFullProcessImageNameW(void *process, uint32 flags, void *name, _Inout_ uint32 *size)')
 const CloseHandle = kernel32.func('bool __stdcall CloseHandle(void *handle)')
+const DwmSetWindowAttribute = dwmapi.func('int32 __stdcall DwmSetWindowAttribute(intptr hwnd, uint32 attr, _In_ int32 *value, uint32 size)')
+const DWMWA_TRANSITIONS_FORCEDISABLED = 3
 
 const EVENT_SYSTEM_FOREGROUND = 0x0003
 const EVENT_SYSTEM_MINIMIZESTART = 0x0016
@@ -41,8 +44,7 @@ function exePath(pid) {
 const isClaudeApp = path => /\\claude\.exe$/i.test(path) && !/\\claude-code\\/i.test(path)
 
 // onChange(true) when Claude or this panel is in front, onChange(false) when anything else is.
-// The second argument says the leaving was Claude minimising, so the panel can copy the
-// animation. Returns a stop function.
+// Returns a stop function.
 function watchClaude(onChange) {
   const claudePids = new Map() // ponytail: pids are cached forever; a reused pid could misjudge until restart
   const isClaude = pid => {
@@ -55,13 +57,13 @@ function watchClaude(onChange) {
   }
 
   let last = null
-  const report = (present, minimised = false) => { if (present !== last) { last = present; onChange(present, minimised) } }
+  const report = present => { if (present !== last) { last = present; onChange(present) } }
 
   const callback = koffi.register((hook, event, hwnd, idObject) => {
     if (idObject !== 0) return // OBJID_WINDOW only: the window itself, not a control inside it
     if (event === EVENT_SYSTEM_FOREGROUND) report(ours(hwnd))
     // A minimise can leave no window in front, so no foreground event follows: catch it directly.
-    else if (event === EVENT_SYSTEM_MINIMIZESTART && isClaude(ownerPid(hwnd))) report(false, true)
+    else if (event === EVENT_SYSTEM_MINIMIZESTART && isClaude(ownerPid(hwnd))) report(false)
     else if (event === EVENT_SYSTEM_MINIMIZEEND && isClaude(ownerPid(hwnd))) report(true)
   }, koffi.pointer(WinEventProc))
 
@@ -80,4 +82,11 @@ function watchClaude(onChange) {
   }
 }
 
-module.exports = { watchClaude, isClaudeApp }
+// Windows fades a window out when it hides; for a panel that should step aside the instant
+// Claude leaves, that fade reads as lag. `handle` is Electron's getNativeWindowHandle() buffer.
+function noFade(handle) {
+  const hwnd = Number(handle.length === 8 ? handle.readBigUInt64LE() : handle.readUInt32LE())
+  return DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, [1], 4) === 0
+}
+
+module.exports = { watchClaude, isClaudeApp, noFade }
