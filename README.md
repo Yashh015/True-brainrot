@@ -6,7 +6,8 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
 
 ## Install
 
-1. Install the True Brainrot app and start it. It starts with Windows from then on.
+1. Download the installer from the [latest release](https://github.com/Yashh015/True-brainrot/releases/latest)
+   and run it. It starts with Windows from then on.
 2. In Claude Code, add the plugin that tells the app what Claude is doing:
 
    ```
@@ -17,6 +18,10 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
 3. Log in to X and Instagram once inside the panel. Use a username and password:
    "Sign in with Google" refuses embedded browsers.
 4. Turn off the Claude app's own notification sound, or you'll hear two chimes.
+
+Size: about 116 MB to download and 360 MB installed, nearly all of it the built-in Chromium
+that shows the feeds. Installs for your Windows account only and never asks for admin rights.
+If Windows Firewall asks about True Brainrot, press Cancel: it needs no access from the network.
 
 Windows only for now: the app follows Claude's window through Windows itself, and the
 plugin's hooks run through `cmd`.
