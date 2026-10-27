@@ -220,7 +220,7 @@ app.whenReady().then(() => {
   // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
   app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
 
-  companion.open() // shown on start so you can log in
+  companion.start() // shown beside Claude on first launch so you can log in; never over the desktop
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

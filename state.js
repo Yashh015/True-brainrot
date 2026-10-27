@@ -50,6 +50,8 @@ function createCompanion(ui, schedule) {
       else if (name === 'attention') handBack('attention')
       // No 'end': any chat closing anywhere used to slam the panel shut mid-scroll; 'stop' covers it.
     },
+    // First launch, at Windows sign-in: wanted on screen for the login, but only beside Claude.
+    start: show,
     // Opening it yourself shows it wherever you are, so the first-run login works and Ctrl+Q
     // never looks dead; it still steps aside the next time another app comes to the front.
     open() { present = true; show() },

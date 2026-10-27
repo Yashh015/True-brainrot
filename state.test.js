@@ -181,3 +181,23 @@ test('a closed panel stays closed when you come back to Claude', () => {
   c.setPresent(false); c.setPresent(true)
   assert.deepStrictEqual(log, [])
 })
+
+test('start() waits for Claude: nothing shows until Claude is in front', () => {
+  const { c, log } = rig()
+  c.setPresent(false); c.start()
+  assert.deepStrictEqual(log, [])
+  c.setPresent(true)
+  assert.deepStrictEqual(log, ['show'])
+})
+
+test('start() while present shows', () => {
+  const { c, log } = rig()
+  c.start()
+  assert.deepStrictEqual(log, ['show'])
+})
+
+test('open() still shows over another app', () => {
+  const { c, log } = rig()
+  c.setPresent(false); c.open()
+  assert.deepStrictEqual(log, ['show'])
+})
