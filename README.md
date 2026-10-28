@@ -15,8 +15,10 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
    /plugin install true-brainrot@true-brainrot
    ```
 
-3. Log in to X and Instagram once inside the panel. Use a username and password:
-   "Sign in with Google" refuses embedded browsers.
+3. Sign in in the True Brainrot window (it opens by itself right after installing; later, click
+   the yellow tray icon or start True Brainrot from the Start menu). Then log in to X and
+   Instagram once in the panel. Use a username and password: "Sign in with Google" refuses
+   embedded browsers.
 4. Turn off the Claude app's own notification sound, or you'll hear two chimes.
 
 Size: about 116 MB to download and 360 MB installed, nearly all of it the built-in Chromium
@@ -30,7 +32,7 @@ plugin's hooks run through `cmd`.
 
 | Key | Does |
 |---|---|
-| Ctrl+Q | Open or close the panel yourself |
+| Ctrl+Q | Open or close the panel, in Claude |
 | Ctrl+Alt+F | Pause the companion for focused work, and resume |
 | Ctrl + wheel, Ctrl+= / Ctrl+- | Zoom the feed in or out; X and Instagram each remember their own |
 | Ctrl+0 | Back to 100% (or click the % in the bar) |
