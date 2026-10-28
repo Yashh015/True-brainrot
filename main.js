@@ -84,6 +84,13 @@ app.whenReady().then(() => {
   // which leaves a loadFile page blank. Handing over the HTML itself needs no file access at all.
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')))
   noFade(win.getNativeWindowHandle())
+  // The app's own pages never navigate: a dropped link or a stray script would otherwise load
+  // another site with the companion bridge (sign out, settings, quit) still attached.
+  const stayPut = contents => {
+    contents.on('will-navigate', event => event.preventDefault())
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  }
+  stayPut(win.webContents)
 
   // Logins saved before encryption was switched on are still plain text on disk: write them back.
   // Done before the feeds load, or a cookie a site refreshes meanwhile is overwritten with the old one.
@@ -277,6 +284,7 @@ app.whenReady().then(() => {
       width: 460, height: 760, minWidth: 380, minHeight: 600, title: 'True Brainrot', icon: logo,
       backgroundColor: '#1b1209', show: false, webPreferences: { preload: path.join(__dirname, 'preload.js') },
     })
+    stayPut(appWin.webContents)
     appWin.loadURL(appPage)
     appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings() })
     appWin.once('ready-to-show', () => appWin.show())
