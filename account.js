@@ -6,7 +6,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { canUse } = require('./access')
+const { canUse, planLine } = require('./access')
 
 function createAccount({ url, anonKey, dir, onChange }) {
   const file = path.join(dir, 'account.bin')
@@ -39,6 +39,8 @@ function createAccount({ url, anonKey, dir, onChange }) {
     }
     if (device.error) return // offline or the server is down: keep the last answer (access.js allows 3 days)
     others = null
+    const list = await supabase.from('devices').select('device_id, name, last_seen').order('last_seen')
+    if (!list.error) store.devices = list.data
     const { data, error: failed } = await supabase.from('subscriptions')
       .select('status, trial_ends_at, current_period_end').maybeSingle()
     if (failed) return
@@ -54,10 +56,11 @@ function createAccount({ url, anonKey, dir, onChange }) {
   return {
     refresh,
 
-    // What the panel shows: the feed, or which gate screen and why.
+    // What both windows show: the feed or a gate screen, plus the profile for the app window.
     view() {
-      if (others) return { ok: false, reason: 'device-limit', devices: others }
-      return { ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), sent: store.sent, error }
+      const profile = { email: store.email, status: store.sub?.status, plan: planLine(store.sub, Date.now()), deviceId: store.deviceId, sent: store.sent, error }
+      if (others) return { ...profile, ok: false, reason: 'device-limit', devices: others }
+      return { ...profile, ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), devices: store.devices || [] }
     },
 
     // Emails a code (the Magic Link template must show {{ .Token }}). A code, not a link: a link
