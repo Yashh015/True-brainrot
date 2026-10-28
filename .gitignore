@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 config.json
+# Planning notes and their scratch folder stay on this PC, out of the public repo.
+docs/superpowers/
+.superpowers/
