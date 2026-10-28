@@ -43,9 +43,10 @@ function exePath(pid) {
 // The desktop app is Claude.exe; the CLI it runs is also claude.exe, under a claude-code folder.
 const isClaudeApp = path => /\\claude\.exe$/i.test(path) && !/\\claude-code\\/i.test(path)
 
-// onChange(true) when Claude or this panel is in front, onChange(false) when anything else is.
+// onChange(true) when Claude or the panel is in front, onChange(false) when anything else is,
+// the app's own window included: ignore(hwnd) names the windows of ours that don't count.
 // Returns a stop function.
-function watchClaude(onChange) {
+function watchClaude(onChange, ignore = () => false) {
   const claudePids = new Map() // ponytail: pids are cached forever; a reused pid could misjudge until restart
   const isClaude = pid => {
     if (!claudePids.has(pid)) claudePids.set(pid, isClaudeApp(exePath(pid)))
@@ -53,7 +54,8 @@ function watchClaude(onChange) {
   }
   const ours = hwnd => {
     const pid = ownerPid(hwnd)
-    return pid === process.pid || isClaude(pid)
+    if (pid === process.pid) return !ignore(Number(koffi.address(hwnd)))
+    return isClaude(pid)
   }
 
   // Every switch is reported, repeats included: opening the panel by hand over another app
@@ -86,8 +88,12 @@ function watchClaude(onChange) {
 // Windows fades a window out when it hides; for a panel that should step aside the instant
 // Claude leaves, that fade reads as lag. `handle` is Electron's getNativeWindowHandle() buffer.
 function noFade(handle) {
-  const hwnd = Number(handle.length === 8 ? handle.readBigUInt64LE() : handle.readUInt32LE())
-  return DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, [1], 4) === 0
+  return DwmSetWindowAttribute(hwndOf(handle), DWMWA_TRANSITIONS_FORCEDISABLED, [1], 4) === 0
 }
 
-module.exports = { watchClaude, isClaudeApp, noFade }
+// Electron's getNativeWindowHandle() buffer → the window handle number Windows uses.
+function hwndOf(handle) {
+  return Number(handle.length === 8 ? handle.readBigUInt64LE() : handle.readUInt32LE())
+}
+
+module.exports = { watchClaude, isClaudeApp, noFade, hwndOf }
