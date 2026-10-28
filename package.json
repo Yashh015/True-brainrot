@@ -26,7 +26,9 @@
       "cookies.js",
       "access.js",
       "account.js",
-      "config.json"
+      "config.json",
+      "app.html",
+      "icon.js"
     ],
     "asarUnpack": [
       "node_modules/koffi/**"

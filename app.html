@@ -1,0 +1,153 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>True Brainrot</title>
+<style>
+  /* The True Brainrot window: sign in, the account and settings. Same poster as the old sidebar gate. */
+  html, body { margin: 0; height: 100%; background: #1b1209; color: #f4ece2; font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif }
+  button { display: grid; place-items: center; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: none; font: inherit; cursor: pointer }
+  [hidden] { display: none !important }
+  #poster-wrap { position: relative; height: 100%; overflow: hidden; background: #1b1209; color: #f4ece2 }
+  #pixels { position: absolute; inset: 0; width: 100%; height: 100% }
+  #poster { position: relative; height: 100%; box-sizing: border-box; padding: 28px 26px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto }
+  #brand { display: flex; align-items: center; gap: 8px; font: 600 19px "Segoe UI", system-ui, sans-serif; letter-spacing: -0.3px }
+  #brand svg { flex: none }
+  #hero h2 { margin: 0; font: 400 26px/1.2 Cambria, Georgia, serif; letter-spacing: -0.2px }
+  #hero h2 em { display: block; color: #e8dccb }
+  #hero p { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: #c9bba8 }
+  #card { margin: auto; width: 100%; max-width: 300px; box-sizing: border-box; text-align: center; padding: 20px; display: grid; gap: 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.16);
+    background: linear-gradient(165deg, rgba(92,62,38,.72), rgba(196,92,58,.62)); backdrop-filter: blur(14px); box-shadow: 0 18px 50px rgba(0,0,0,.45) }
+  #card h1 { margin: 0; font-size: 18px; font-weight: 600 }
+  #card p { margin: 0; color: #eadccb; line-height: 1.5; font-size: 13.5px }
+  #card input { width: 100%; box-sizing: border-box; height: 40px; padding: 0 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 10px;
+    background: rgba(20,12,6,.45); color: #fff; font: inherit; outline: none }
+  #card input:focus { border-color: rgba(255,255,255,.55) }
+  #card input::placeholder { color: rgba(255,255,255,.45) }
+  #card form { display: grid; gap: 10px; margin: 0 }
+  #card button { color: #f4ece2; border: 1px solid rgba(255,255,255,.22); height: 36px }
+  #card button:hover { background: rgba(255,255,255,.1); color: #fff }
+  #card .primary { height: 40px; border: 0; border-radius: 999px; background: #f4ece2; color: #1b1209; font-weight: 600 }
+  #card .primary:hover { background: #fff; color: #1b1209 }
+  #card .error { color: #ffd2c2 }
+  #card h2 { margin: 6px 0 0; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c9bba8; text-align: left }
+  #card .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding: 8px 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: rgba(20,12,6,.3) }
+  #card .row button { height: 30px; padding: 0 12px }
+  #card .row .primary { height: 30px; padding: 0 14px }
+  #card .row input[type=checkbox] { width: 18px; height: 18px; flex: none; accent-color: #f2cf4a }
+  #card .email { font-weight: 600; color: #fff }
+  #card.wide { max-width: 360px }
+  #tip { align-self: center; margin: 0; padding: 6px 12px; border-radius: 999px; background: rgba(20,12,6,.78); font-size: 12.5px; color: #e8dccb; text-align: center }
+  kbd { display: inline-block; padding: 1px 6px; border: 1px solid rgba(255,255,255,.25); border-bottom-width: 2px; border-radius: 5px; background: rgba(20,12,6,.55); color: #f4ece2; font: 600 11.5px "Segoe UI", system-ui, sans-serif }
+</style>
+<main id="poster-wrap">
+  <canvas id="pixels" aria-hidden="true"></canvas>
+  <div id="poster">
+    <div id="brand">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <rect x="8" y="0" width="4" height="4"/><rect x="0" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/>
+        <rect x="8" y="16" width="4" height="4"/><rect x="7" y="7" width="6" height="6"/><rect x="3" y="3" width="2" height="2"/><rect x="15" y="15" width="2" height="2"/>
+      </svg>
+      true brainrot
+    </div>
+    <div id="hero">
+      <h2>Scroll while Claude works.<em>Back the moment it needs you.</em></h2>
+      <p>X and Instagram slide in beside Claude during long tasks, then step aside with a chime when Claude is done.</p>
+    </div>
+    <section id="card"></section>
+    <p id="tip">Press <kbd>Ctrl</kbd> + <kbd>Q</kbd> in Claude to open or close the panel.</p>
+  </div>
+</main>
+<script>
+  // Every screen is built from text nodes, never HTML strings: emails and device names come from the server.
+  const el = (tag, props = {}, ...kids) => {
+    const node = Object.assign(document.createElement(tag), props)
+    node.append(...kids)
+    return node
+  }
+  const button = (text, onclick, primary) => el('button', { textContent: text, onclick, className: primary ? 'primary' : '' })
+  const gate = document.getElementById('poster-wrap') // the area drawPixels fills
+
+  // The pixel shapes behind the card: a sun, a hill and a warm band, dithered at the edges.
+  // A fixed seed, so the picture is the same every time and only rescales with the window.
+  function drawPixels() {
+    const box = gate.getBoundingClientRect()
+    if (!box.width) return
+    const scale = devicePixelRatio, cell = 10
+    pixels.width = box.width * scale
+    pixels.height = box.height * scale
+    const g = pixels.getContext('2d')
+    g.scale(scale, scale)
+    let seed = 7
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const cols = Math.ceil(box.width / cell), rows = Math.ceil(box.height / cell)
+    const edge = (d, r, soft) => d < r - soft || (d < r + soft && rand() < 0.5)
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const u = x / cols, v = y / rows
+      const hill = Math.hypot((u - 0.35) * 0.9, v - 1.25)
+      const sun = Math.hypot((u - 0.9) * box.width / box.height * 1.3, v - 0.55)
+      let color = null
+      if (edge(sun, 0.3, 0.03)) color = rand() < 0.08 ? '#120c06' : '#f2cf4a'
+      if (edge(hill, 0.78, 0.04)) {
+        color = '#38383a'
+        if (u - (1 - v) * 0.8 > 0.3) color = '#f0644a'
+        else if (u < 0.5 && rand() < 0.22) color = '#5b9bd5'
+      }
+      // One pixel of overlap: at 125% scaling exact-size squares leave hairline gaps between them.
+      if (color) { g.fillStyle = color; g.fillRect(x * cell, y * cell, cell + 1, cell + 1) }
+    }
+  }
+
+  let view = {}, settings = {}
+
+  const signInScreen = v => v.sent
+    ? [el('h1', { textContent: 'Check your email' }),
+       el('p', { textContent: `Type the code we sent to ${v.sent}.` }),
+       el('form', { onsubmit: event => { event.preventDefault(); companion.verifyCode(event.target.code.value) } },
+         el('input', { name: 'code', required: true, inputMode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9 ]{6,10}', maxLength: 12, placeholder: '123456', autofocus: true,
+           style: 'letter-spacing:.3em;text-align:center;font-size:20px' }),
+         el('button', { type: 'submit', textContent: 'Sign in', className: 'primary' })),
+       button('Send again', () => companion.signIn(v.sent)),
+       button('Change email', () => companion.signOut())]
+    : [el('h1', { textContent: 'Sign in to True Brainrot' }),
+       el('p', { textContent: 'Your 7-day free trial starts when you sign in. No card needed.' }),
+       el('form', { onsubmit: event => { event.preventDefault(); companion.signIn(event.target.email.value) } },
+         el('input', { name: 'email', type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email' }),
+         el('button', { type: 'submit', textContent: 'Send code', className: 'primary' }))]
+
+  const deviceLimitScreen = v => [el('h1', { textContent: 'Signed in on 2 PCs already' }),
+    el('p', { textContent: 'Sign out one of them to use True Brainrot here.' }),
+    ...v.devices.map(d => el('div', { className: 'row' }, el('span', { textContent: d.name }), button('Sign out', () => companion.removeDevice(d.device_id))))]
+
+  const toggle = (label, key) => el('label', { className: 'row' }, el('span', { textContent: label }),
+    el('input', { type: 'checkbox', checked: settings[key] === true, onchange: event => companion.setSetting(key, event.target.checked) }))
+
+  const profileScreen = v => [
+    el('h1', { textContent: 'Your account' }),
+    el('p', { className: 'email', textContent: v.email }),
+    el('div', { className: 'row' }, el('span', { textContent: v.plan }),
+      button(v.status === 'active' ? 'Manage' : 'Subscribe', () => companion.subscribe(), true)),
+    el('h2', { textContent: 'Your PCs' }),
+    ...v.devices.map(d => el('div', { className: 'row' },
+      el('span', { textContent: d.device_id === v.deviceId ? `${d.name} (this PC)` : d.name }),
+      d.device_id === v.deviceId ? '' : button('Sign out', () => companion.removeDevice(d.device_id)))),
+    el('h2', { textContent: 'Settings' }),
+    toggle('Start with Windows', 'openAtLogin'),
+    toggle('Pause the panel (Ctrl + Alt + F)', 'paused'),
+    button('Sign out', () => companion.signOut()),
+  ]
+
+  // Sign-in screens are rebuilt only when they change, so a half-typed email or code survives.
+  let shown = ''
+  function render() {
+    const screen = !view.email ? 'sign-in' : view.reason === 'device-limit' ? 'limit' : 'profile'
+    const key = JSON.stringify(screen === 'profile' ? [screen, view, settings] : [screen, view.sent, view.error, view.devices])
+    if (key === shown) return
+    shown = key
+    card.classList.toggle('wide', screen === 'profile')
+    const body = screen === 'sign-in' ? signInScreen(view) : screen === 'limit' ? deviceLimitScreen(view) : profileScreen(view)
+    card.replaceChildren(...body, ...(view.error ? [el('p', { className: 'error', textContent: view.error })] : []))
+    drawPixels()
+  }
+  companion.onAccess(v => { view = v; render() })
+  companion.onSettings(s => { settings = s; render() })
+  addEventListener('resize', drawPixels)
+</script>

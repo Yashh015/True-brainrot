@@ -1,14 +1,16 @@
-const { app, BrowserWindow, WebContentsView, Menu, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
+const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const { createCompanion } = require('./state')
-const { watchClaude, noFade } = require('./winwatch')
+const { watchClaude, noFade, hwndOf } = require('./winwatch')
 const { inFeed, isWebLink, leavesFeed } = require('./links')
 const { PORT } = require('./install-hooks')
 const { toSetDetails } = require('./cookies')
 const { createAccount } = require('./account')
 const CONFIG = require('./config.json') // the Supabase project, written from .env by make-config.js
+const { logoBitmap } = require('./icon')
+let tray = null // kept at module level: a tray held only by a closure is garbage-collected and vanishes
 
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
 // Chrome's own zoom steps, so Ctrl+wheel and Ctrl+= / - feel the same as in a browser.
@@ -211,9 +213,17 @@ app.whenReady().then(() => {
 
   // The feed shows only while the account allows it; otherwise index.html shows the gate screen.
   const account = createAccount({ ...CONFIG, dir: app.getPath('userData'), onChange: () => applyAccess() })
+  let appWin = null // the True Brainrot window, made on first open (openApp, below)
+  // Your choices, kept next to the width: Start with Windows (it used to be forced on every start)
+  // and whether setup is done (the window opens by itself only on the first start after installing).
+  const prefsFile = path.join(app.getPath('userData'), 'prefs.json')
+  const prefs = { openAtLogin: true, setupDone: false }
+  try { Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile, 'utf8'))) } catch {}
+  // Both windows show the account: the sidebar its gate, the app window the profile.
+  const send = (channel, data) => { for (const w of [win, appWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, data) }
   const applyAccess = () => {
     const view = account.view()
-    win.webContents.send('access', view)
+    send('access', view)
     if (view.ok === feedOn) return
     feedOn = view.ok
     if (feedOn) {
@@ -237,7 +247,7 @@ app.whenReady().then(() => {
   ipcMain.on('sign-out', () => account.signOut().catch(() => {}))
   ipcMain.on('subscribe', async () => {
     const url = await account.checkoutUrl().catch(() => null)
-    if (!url) return win.webContents.send('access', { ...account.view(), error: 'Subscriptions open soon.' })
+    if (!url) return send('access', { ...account.view(), error: 'Subscriptions open soon.' })
     openOutside(url)
     // The payment reaches the server within seconds or so: look for it for 2 minutes.
     for (let i = 0; i < 12 && !account.view().ok; i++) {
@@ -258,6 +268,40 @@ app.whenReady().then(() => {
   win.on('session-end', () => { quitting = true }) // log off / restart: never hold Windows up
   win.on('close', event => { if (!quitting) { event.preventDefault(); companion.close() } })
 
+  // The True Brainrot window: sign in, the account and settings, whether or not Claude is open.
+  const logo = nativeImage.createFromBitmap(logoBitmap(32), { width: 32, height: 32, scaleFactor: 2 })
+  const appPage = 'data:text/html;charset=utf-8,' + encodeURIComponent(fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8'))
+  const openApp = () => {
+    if (appWin && !appWin.isDestroyed()) { appWin.show(); appWin.focus(); return }
+    appWin = new BrowserWindow({
+      width: 460, height: 760, minWidth: 380, minHeight: 600, title: 'True Brainrot', icon: logo,
+      backgroundColor: '#1b1209', show: false, webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    })
+    appWin.loadURL(appPage)
+    appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings() })
+    appWin.once('ready-to-show', () => appWin.show())
+    // Its × only hides it: the app keeps running in the tray, ready for Claude.
+    appWin.on('close', event => { if (!quitting) { event.preventDefault(); appWin.hide() } })
+  }
+  ipcMain.on('open-app', openApp)
+
+  tray = new Tray(logo)
+  tray.setToolTip('True Brainrot')
+  tray.on('click', openApp)
+  tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Open True Brainrot', click: openApp }, { label: 'Quit', click: () => app.quit() }]))
+
+  // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
+  const loginItem = () => app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: prefs.openAtLogin === true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
+  const sendSettings = () => send('settings', { openAtLogin: prefs.openAtLogin === true, paused: !companion.isEnabled() })
+  ipcMain.on('set-setting', (_, key, value) => {
+    if (key === 'openAtLogin') {
+      prefs.openAtLogin = value === true
+      fs.writeFile(prefsFile, JSON.stringify(prefs), () => {})
+      loginItem()
+    } else if (key === 'paused' && (value === true) === companion.isEnabled()) companion.toggleEnabled()
+    sendSettings()
+  })
+
   http.createServer((req, res) => {
     // curl sends no Origin; a web page in your browser does, and gets ignored.
     if (req.method === 'POST' && !req.headers.origin) companion.event(req.url.slice(1))
@@ -270,22 +314,29 @@ app.whenReady().then(() => {
 
   // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
   // tray, and the panel steps out of sight at once; come back and it returns.
-  const stopWatching = watchClaude(present => companion.setPresent(present))
+  // The app window counts as "not Claude", so the panel never covers it.
+  const stopWatching = watchClaude(present => companion.setPresent(present),
+    hwnd => Boolean(appWin) && !appWin.isDestroyed() && hwnd === hwndOf(appWin.getNativeWindowHandle()))
   app.on('will-quit', () => { stopWatching(); saveLogins() })
 
-  globalShortcut.register(OFF_SWITCH, () => companion.toggleEnabled())
+  globalShortcut.register(OFF_SWITCH, () => { companion.toggleEnabled(); sendSettings() })
   globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
-  // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
-  app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
+  loginItem()
 
-  // Starting True Brainrot again (Start menu, a desktop shortcut) while it already runs opens the panel.
-  app.on('second-instance', () => companion.open())
+  // Starting True Brainrot again (Start menu, a desktop shortcut) while it already runs opens its window.
+  app.on('second-instance', openApp)
 
   refresh()
   setInterval(refresh, 6 * 60 * 60 * 1000) // a cancelled or renewed subscription shows up within 6 h
   setInterval(applyAccess, 60 * 1000) // a trial ending mid-session locks within a minute
 
-  companion.open() // shown beside Claude on first launch so you can log in; never over the desktop
+  // Right after installing, the first start opens the window so you can sign in. From then on it
+  // opens only when you ask: tray icon, Start menu, or the sidebar's Open app.
+  if (!prefs.setupDone) {
+    openApp()
+    prefs.setupDone = true
+    fs.writeFile(prefsFile, JSON.stringify(prefs), () => {})
+  }
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())
