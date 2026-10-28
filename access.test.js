@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { canUse } = require('./access')
+const { canUse, planLine } = require('./access')
 
 const DAY = 24 * 60 * 60 * 1000
 const now = Date.UTC(2026, 9, 27)
@@ -40,4 +40,17 @@ test('offline for up to 3 days keeps working, longer locks', () => {
 
 test('a clock set backwards counts as offline, so it cannot stretch a trial', () => {
   assert.deepStrictEqual(canUse({ signedIn: true, status: 'active', checkedAt: now + DAY }, now), { ok: false, reason: 'offline-too-long' })
+})
+
+test('the plan line says what the account has, in words', () => {
+  const day = 24 * 60 * 60 * 1000
+  assert.strictEqual(planLine({ status: 'trialing', trialEndsAt: now + 4.2 * day }, now), 'Free trial · 5 days left')
+  assert.strictEqual(planLine({ status: 'trialing', trialEndsAt: now + day / 2 }, now), 'Free trial · 1 day left')
+  assert.strictEqual(planLine({ status: 'trialing', trialEndsAt: now }, now), 'Free trial ended')
+  assert.strictEqual(planLine({ status: 'active', periodEnd: Date.UTC(2026, 10, 28) }, now), 'Subscribed · renews 28 Nov 2026')
+  assert.strictEqual(planLine({ status: 'active', periodEnd: NaN }, now), 'Subscribed')
+  assert.strictEqual(planLine({ status: 'past_due' }, now), 'Payment failed')
+  assert.strictEqual(planLine({ status: 'cancelled', periodEnd: Date.UTC(2026, 10, 2) }, now), 'Cancelled · works until 2 Nov 2026')
+  assert.strictEqual(planLine({ status: 'cancelled', periodEnd: now }, now), 'Subscription ended')
+  assert.strictEqual(planLine(undefined, now), 'No subscription')
 })

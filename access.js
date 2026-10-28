@@ -17,4 +17,20 @@ function canUse(account, now) {
   return status === 'cancelled' && now < account.periodEnd ? { ok: true } : { ok: false, reason: 'cancelled' }
 }
 
-module.exports = { canUse }
+const DAY = 24 * 60 * 60 * 1000
+const date = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+// The account in one line, for the app window's profile.
+function planLine(sub, now) {
+  const { status, trialEndsAt, periodEnd } = sub || {}
+  if (status === 'trialing') {
+    const days = Math.ceil((trialEndsAt - now) / DAY)
+    return days > 0 ? `Free trial · ${days} ${days === 1 ? 'day' : 'days'} left` : 'Free trial ended'
+  }
+  if (status === 'active') return periodEnd > 0 ? `Subscribed · renews ${date(periodEnd)}` : 'Subscribed'
+  if (status === 'past_due') return 'Payment failed'
+  if (status === 'cancelled') return periodEnd > now ? `Cancelled · works until ${date(periodEnd)}` : 'Subscription ended'
+  return 'No subscription'
+}
+
+module.exports = { canUse, planLine }
