@@ -285,7 +285,7 @@ app.whenReady().then(() => {
   setInterval(refresh, 6 * 60 * 60 * 1000) // a cancelled or renewed subscription shows up within 6 h
   setInterval(applyAccess, 60 * 1000) // a trial ending mid-session locks within a minute
 
-  companion.start() // shown beside Claude on first launch so you can log in; never over the desktop
+  companion.open() // shown beside Claude on first launch so you can log in; never over the desktop
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

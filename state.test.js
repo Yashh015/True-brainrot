@@ -159,21 +159,12 @@ test('following Claude out and back uses leave/back, not the slide', () => {
   assert.deepStrictEqual(log, ['show', 'leave', 'back', 'hide'])
 })
 
-test('opening it yourself works while another app is in front, until the next switch', () => {
-  const { c, log } = rig()
-  c.setPresent(false)
-  c.open()
-  assert.deepStrictEqual(log, ['show'])
-  c.setPresent(false)
-  assert.deepStrictEqual(log, ['show', 'hide'])
-})
-
-test('Ctrl+Q while the panel is hidden away from Claude brings it up, not down', () => {
+test('Ctrl+Q away from Claude leaves the panel as it was; back in Claude it returns', () => {
   const { c, log } = rig()
   c.open(); c.setPresent(false); c.toggleOpen()
+  assert.deepStrictEqual(log, ['show', 'hide'])
+  c.setPresent(true)
   assert.deepStrictEqual(log, ['show', 'hide', 'show'])
-  c.toggleOpen()
-  assert.strictEqual(log.at(-1), 'hide')
 })
 
 test('a closed panel stays closed when you come back to Claude', () => {
@@ -182,22 +173,16 @@ test('a closed panel stays closed when you come back to Claude', () => {
   assert.deepStrictEqual(log, [])
 })
 
-test('start() waits for Claude: nothing shows until Claude is in front', () => {
+test('the open key does nothing away from Claude', () => {
   const { c, log } = rig()
-  c.setPresent(false); c.start()
-  assert.deepStrictEqual(log, [])
+  c.setPresent(false); c.toggleOpen()
   c.setPresent(true)
-  assert.deepStrictEqual(log, ['show'])
+  assert.deepStrictEqual(log, [])
 })
 
-test('start() while present shows', () => {
-  const { c, log } = rig()
-  c.start()
-  assert.deepStrictEqual(log, ['show'])
-})
-
-test('open() still shows over another app', () => {
-  const { c, log } = rig()
-  c.setPresent(false); c.open()
-  assert.deepStrictEqual(log, ['show'])
+test('the off switch reports its state', () => {
+  const { c } = rig()
+  assert.strictEqual(c.isEnabled(), true)
+  c.toggleEnabled()
+  assert.strictEqual(c.isEnabled(), false)
 })
