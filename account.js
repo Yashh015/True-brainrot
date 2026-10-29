@@ -6,7 +6,8 @@ const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { canUse, planLine } = require('./access')
+const { canUse, planLine, FREE } = require('./access')
+const { isDuplicate } = require('./onboarding')
 
 function createAccount({ url, anonKey, dir, onChange }) {
   const file = path.join(dir, 'account.bin')
@@ -30,8 +31,18 @@ function createAccount({ url, anonKey, dir, onChange }) {
   let error = null
   let seenWritten = 0 // when seenAt last went to disk
 
+  // Sends the email that sign-in kept. A duplicate is a success: the key caught it, so this email is
+  // already on the list. Anything else (offline, server down) stays pending and is retried.
+  async function sendSignup() {
+    if (!store.signupPending || !store.email) return
+    const { error: failed } = await supabase.from('signups')
+      .insert({ email: store.email, device_id: store.deviceId })
+    if (!failed || isDuplicate(failed)) { delete store.signupPending; save() }
+  }
+
   async function refresh() {
     if (!store.email) return
+    if (FREE) return sendSignup() // no devices, no subscription: the email list is all we keep
     const device = await supabase.rpc('register_device', { p_device_id: store.deviceId, p_name: os.hostname() })
     if (device.error?.message.includes('device_limit')) {
       const { data } = await supabase.from('devices').select('device_id, name, last_seen').order('last_seen')
@@ -69,13 +80,20 @@ function createAccount({ url, anonKey, dir, onChange }) {
       }
       const profile = { email: store.email, status: store.sub?.status, plan: planLine(store.sub, Date.now()), deviceId: store.deviceId, sent: store.sent, error }
       if (others) return { ...profile, ok: false, reason: 'device-limit', devices: others }
-      return { ...profile, ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), devices: store.devices || [] }
+      return { ...profile, ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), devices: FREE ? [] : store.devices || [] }
     },
 
     // Emails a code (the Magic Link template must show {{ .Token }}). A code, not a link: a link
     // opens the browser, flashes it, then has to find its way back into the app.
     async signIn(email) {
       error = null
+      if (FREE) {
+        // No code while it is free: the email is kept for updates and the panel opens at once.
+        store.email = String(email).trim()
+        store.signupPending = true
+        save()
+        return sendSignup()
+      }
       const { error: failed } = await supabase.auth.signInWithOtp({ email })
       if (failed) error = failed.message
       else store.sent = email
@@ -100,8 +118,10 @@ function createAccount({ url, anonKey, dir, onChange }) {
     },
 
     async signOut() {
-      await supabase.rpc('remove_device', { p_device_id: store.deviceId })
-      await supabase.auth.signOut()
+      if (!FREE) {
+        await supabase.rpc('remove_device', { p_device_id: store.deviceId })
+        await supabase.auth.signOut()
+      }
       store = { deviceId: store.deviceId }
       others = null
       save()
