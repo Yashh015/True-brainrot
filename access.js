@@ -2,13 +2,17 @@
 // Electron so `node --test` can check every rule with a fixed clock.
 const OFFLINE_FOR = 3 * 24 * 60 * 60 * 1000 // works this long on the last answer, then needs the internet
 
+const CLOCK_SLACK = 10 * 60 * 1000 // a time sync may nudge the clock back this much; more is a rollback
+
 const LOCKED = { past_due: 'payment-failed' }
 
-// account: { signedIn, status, trialEndsAt, periodEnd, checkedAt }, times in ms.
+// account: { signedIn, status, trialEndsAt, periodEnd, checkedAt, seenAt }, times in ms.
+// seenAt is the latest time the app has seen since the last check.
 function canUse(account, now) {
   if (!account.signedIn) return { ok: false, reason: 'signed-out' }
-  // A check "from the future" means the clock was set back: treat as offline, or it could stretch a trial.
-  if (!(account.checkedAt <= now) || now - account.checkedAt > OFFLINE_FOR) return { ok: false, reason: 'offline-too-long' }
+  // A check "from the future", or a clock now behind a time already seen, means the clock was set
+  // back: treat as offline, or rewinding again and again would stretch the 3 days, or a trial.
+  if (!(account.checkedAt <= now) || account.seenAt - now > CLOCK_SLACK || now - account.checkedAt > OFFLINE_FOR) return { ok: false, reason: 'offline-too-long' }
   const { status } = account
   if (status === 'active') return { ok: true }
   if (status === 'trialing') return now < account.trialEndsAt ? { ok: true } : { ok: false, reason: 'trial-ended' }

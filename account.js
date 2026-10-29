@@ -28,6 +28,7 @@ function createAccount({ url, anonKey, dir, onChange }) {
 
   let others = null // the other PCs, set only while this one is refused by the device limit
   let error = null
+  let seenWritten = 0 // when seenAt last went to disk
 
   async function refresh() {
     if (!store.email) return
@@ -58,6 +59,14 @@ function createAccount({ url, anonKey, dir, onChange }) {
 
     // What both windows show: the feed or a gate screen, plus the profile for the app window.
     view() {
+      // Remember the latest time seen, so winding the clock back can't replay the offline days.
+      // A successful check (refresh) replaces store.sub, which clears it after a clock is fixed.
+      // Kept current in memory, so a rewind locks once it passes access.js's slack; written to disk
+      // at most every 10 minutes, not on every call.
+      if (store.sub) {
+        store.sub.seenAt = Math.max(store.sub.seenAt || 0, Date.now())
+        if (Date.now() - seenWritten > 10 * 60 * 1000) { seenWritten = Date.now(); write() }
+      }
       const profile = { email: store.email, status: store.sub?.status, plan: planLine(store.sub, Date.now()), deviceId: store.deviceId, sent: store.sent, error }
       if (others) return { ...profile, ok: false, reason: 'device-limit', devices: others }
       return { ...profile, ...canUse({ signedIn: Boolean(store.email), ...store.sub }, Date.now()), devices: store.devices || [] }

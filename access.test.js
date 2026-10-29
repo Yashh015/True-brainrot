@@ -42,6 +42,13 @@ test('a clock set backwards counts as offline, so it cannot stretch a trial', ()
   assert.deepStrictEqual(canUse({ signedIn: true, status: 'active', checkedAt: now + DAY }, now), { ok: false, reason: 'offline-too-long' })
 })
 
+test('winding the clock back past the latest time seen locks, so the offline days cannot be replayed', () => {
+  const sub = { signedIn: true, status: 'active', checkedAt: now - 2 * DAY }
+  assert.deepStrictEqual(canUse({ ...sub, seenAt: now + DAY }, now), { ok: false, reason: 'offline-too-long' })
+  // A clock nudged back a few minutes (a time sync) is not a rollback.
+  assert.strictEqual(canUse({ ...sub, seenAt: now + 5 * 60 * 1000 }, now).ok, true)
+})
+
 test('the plan line says what the account has, in words', () => {
   const day = 24 * 60 * 60 * 1000
   assert.strictEqual(planLine({ status: 'trialing', trialEndsAt: now + 4.2 * day }, now), 'Free trial · 5 days left')

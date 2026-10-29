@@ -6,8 +6,9 @@
   html, body { margin: 0; height: 100% }
   /* The border round the whole window; main.js insets the feed by the same 1 px. */
   body { box-sizing: border-box; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif }
-  header { height: 43px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line) }
-  button { display: grid; place-items: center; height: 30px; min-width: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: inherit; cursor: pointer }
+  /* 1 px window border + 35 px puts the line at 36 px, level with Claude desktop's own header line. */
+  header { height: 35px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line) }
+  button { display: grid; place-items: center; height: 28px; min-width: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: inherit; cursor: pointer }
   button:hover { background: var(--hover); color: var(--text) }
   button.on { background: var(--active); color: var(--text) }
   button.icon { padding: 0; width: 32px }
@@ -15,14 +16,14 @@
   [hidden] { display: none !important } /* button's display: grid would otherwise beat the hidden attribute */
   #banner { display: none; align-items: center; gap: 6px; margin-right: 4px; padding-left: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text) }
   #banner.attention { border-color: #b4552d }
-  #banner button { height: 26px; padding: 0 8px }
+  #banner button { height: 24px; padding: 0 8px }
   /* The gate: in place of the feed while the account doesn't allow it; signing in happens in the app window. */
-  #gate { height: calc(100% - 44px); box-sizing: border-box; padding: 24px; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center }
+  #gate { height: calc(100% - 36px); box-sizing: border-box; padding: 24px; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center }
   #gate h1 { margin: 0; font-size: 17px; font-weight: 600 }
   #gate p { margin: 0; max-width: 260px; color: var(--muted); line-height: 1.5 }
   #gate .primary { height: 36px; padding: 0 18px; border-radius: 999px; background: var(--text); color: var(--bg); font-weight: 600 }
   #gate .primary:hover { background: #fff }
-  body.locked [data-tab], body.locked #zoom { display: none !important }
+  body.locked [data-tab], body.locked #zoom, body.locked #reload { display: none !important }
 </style>
 <header>
   <button data-tab="x" class="on icon" title="X" aria-label="X">
@@ -33,6 +34,7 @@
   </button>
   <span id="gap"></span>
   <span id="banner"><span id="text"></span><button onclick="companion.snooze()">5 more s</button></span>
+  <button id="reload" onclick="companion.reload()" title="The page keeps crashing" hidden>Reload</button>
   <button id="zoom" onclick="companion.zoomReset()" title="Reset zoom (Ctrl+0)" hidden></button>
   <button class="icon" onclick="companion.minimise()" title="Hide till Claude's next long task">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3.5 8h9"/></svg>
@@ -76,6 +78,9 @@
     zoom.hidden = factor === 1
     zoom.textContent = Math.round(factor * 100) + '%'
   })
+
+  // Only there once the current feed has crashed past its automatic retries.
+  companion.onCrashed(crashed => { reload.hidden = !crashed })
 
   const ctx = new AudioContext()
 

@@ -15,14 +15,15 @@ let tray = null // kept at module level: a tray held only by a closure is garbag
 const ASPECT = 9 / 16 // phone-shaped like the feeds themselves, docked right; drag the left edge to change it
 // Chrome's own zoom steps, so Ctrl+wheel and Ctrl+= / - feel the same as in a browser.
 const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
-const BAR = 44 // height of the tab/banner bar in index.html
+const BAR = 36 // height of the tab/banner bar in index.html, level with Claude desktop's header line
 const MIN_WIDTH = 320 // narrower than this and the feeds' own layouts break
 const BORDER = 1 // the frame index.html draws round the feed
 const BG = '#1f1f1f' // Claude desktop's pane colour, so a slow page load never flashes white
 const OFF_SWITCH = 'Ctrl+Alt+F'
 const IDLE_AFTER = 15 // seconds without mouse or keyboard before the feed may pop up
 const SLIDE_MS = 180 // slide in/out from the right edge
-const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Global, so other apps lose Ctrl+Q while this runs
+const CRASH_TRIES = 3 // reloads after a feed page crashes, before it waits for the Reload button
+const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Taken only while Claude is in front
 // X and Instagram treat Electron's own user agent as unusual, so present as plain Chrome. The
 // version is the engine's real one: a made-up version that disagrees with what the page's own
 // checks see is a bot signal, and a fixed one goes stale with every Electron update.
@@ -68,7 +69,7 @@ app.whenReady().then(() => {
     })
   })
 
-  const { workArea } = screen.getPrimaryDisplay()
+  let { workArea } = screen.getPrimaryDisplay() // updated by redock when screens change
   // The width you dragged it to last time, kept next to the feed's cookies.
   const sizeFile = path.join(app.getPath('userData'), 'width.json')
   // A corrupt file, or a width saved on a bigger screen, must never put the panel off-screen.
@@ -143,6 +144,8 @@ app.whenReady().then(() => {
     else return
     event.preventDefault()
   }
+  const crashes = { x: 0, instagram: 0 } // crashes since the site last loaded
+  const showCrashed = () => win.webContents.send('crashed', crashes[current] > CRASH_TRIES)
   for (const [name, view] of Object.entries(views)) {
     const page = view.webContents
     page.on('zoom-changed', (_, direction) => stepZoom(name, direction === 'in' ? 1 : -1))
@@ -154,9 +157,21 @@ app.whenReady().then(() => {
     page.on('did-fail-load', (_, code, __, url, isMainFrame) => {
       if (isMainFrame && code !== -3) setTimeout(() => { if (feedOn) page.loadURL(url) }, 3000)
     })
+    // A crashed or killed feed page would stay blank for good: load the site again. A page that
+    // crashes on every load gets 3 tries, then the bar's Reload button (showCrashed) takes over.
+    page.on('render-process-gone', () => {
+      if (++crashes[name] > CRASH_TRIES) return showCrashed()
+      setTimeout(() => { if (feedOn) page.loadURL(SITES[name]).catch(() => {}) }, 3000)
+    })
+    page.on('did-finish-load', () => { if (page.getURL() !== 'about:blank') crashes[name] = 0 })
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
   win.webContents.on('did-finish-load', showZoom)
+  ipcMain.on('reload', () => {
+    crashes[current] = 0
+    showCrashed()
+    if (feedOn) views[current].webContents.loadURL(SITES[current]).catch(() => {})
+  })
 
   const pauseVideo = () => {
     for (const v of Object.values(views))
@@ -172,8 +187,16 @@ app.whenReady().then(() => {
   // a pixel or two each frame, and a slide is ~10 frames, so the panel grew past the screen edge.
   const place = x => win.setBounds({ x, y: workArea.y, width, height: workArea.height })
   const inX = () => workArea.x + workArea.width - width
-  const outX = workArea.x + workArea.width
+  const outX = () => workArea.x + workArea.width
   let slide = null
+  // A screen unplugged, resized or rescaled: dock to the primary one again, at a width that fits it.
+  const redock = () => {
+    workArea = screen.getPrimaryDisplay().workArea
+    width = fit(width)
+    clearInterval(slide)
+    place(win.isVisible() ? inX() : outX())
+  }
+  for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(event, redock)
   const slideTo = (to, done) => {
     clearInterval(slide)
     const from = win.getPosition()[0]
@@ -188,11 +211,11 @@ app.whenReady().then(() => {
   const companion = createCompanion({
     show: () => {
       win.webContents.send('alert', null)
-      if (!win.isVisible()) { place(outX); win.showInactive() } // never steal focus from Claude
+      if (!win.isVisible()) { place(outX()); win.showInactive() } // never steal focus from Claude
       slideTo(inX())
     },
     alert: kind => { pauseVideo(); win.webContents.send('alert', kind) },
-    hide: () => { pauseVideo(); saveLogins(); slideTo(outX, () => win.hide()) }, // hiding hands focus back to the Claude window
+    hide: () => { pauseVideo(); saveLogins(); slideTo(outX(), () => win.hide()) }, // hiding hands focus back to the Claude window
     // Following Claude out and back is instant, no slide and no fade: copying Claude's own
     // minimise animation looked a beat slow, so the panel is gone the moment Claude starts to go.
     leave: () => {
@@ -216,6 +239,7 @@ app.whenReady().then(() => {
     if (feedOn) win.contentView.addChildView(views[current])
     layout()
     showZoom()
+    showCrashed()
   })
 
   // The feed shows only while the account allows it; otherwise index.html shows the gate screen.
@@ -323,12 +347,16 @@ app.whenReady().then(() => {
   // The feed belongs to Claude: switch to another app, minimise Claude or close it to the
   // tray, and the panel steps out of sight at once; come back and it returns.
   // The app window counts as "not Claude", so the panel never covers it.
-  const stopWatching = watchClaude(present => companion.setPresent(present),
+  // Ctrl+Q is held only while Claude or the panel is in front, so every other app keeps its own Ctrl+Q.
+  const holdOpenKey = present => {
+    if (!present) globalShortcut.unregister(OPEN_KEY)
+    else if (!globalShortcut.isRegistered(OPEN_KEY)) globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
+  }
+  const stopWatching = watchClaude(present => { holdOpenKey(present); companion.setPresent(present) },
     hwnd => Boolean(appWin) && !appWin.isDestroyed() && hwnd === hwndOf(appWin.getNativeWindowHandle()))
   app.on('will-quit', () => { stopWatching(); saveLogins() })
 
   globalShortcut.register(OFF_SWITCH, () => { companion.toggleEnabled(); sendSettings() })
-  globalShortcut.register(OPEN_KEY, () => companion.toggleOpen())
   loginItem()
 
   // Starting True Brainrot again (Start menu, a desktop shortcut) while it already runs opens its window.
