@@ -6,9 +6,13 @@ const CLOCK_SLACK = 10 * 60 * 1000 // a time sync may nudge the clock back this 
 
 const LOCKED = { past_due: 'payment-failed' }
 
+// Early access: everyone in, no trial, no subscription, no device limit. Flip this to false to bring
+// the paid rules back exactly as they were.
+const FREE = true
+
 // account: { signedIn, status, trialEndsAt, periodEnd, checkedAt, seenAt }, times in ms.
 // seenAt is the latest time the app has seen since the last check.
-function canUse(account, now) {
+function paidCanUse(account, now) {
   if (!account.signedIn) return { ok: false, reason: 'signed-out' }
   // A check "from the future", or a clock now behind a time already seen, means the clock was set
   // back: treat as offline, or rewinding again and again would stretch the 3 days, or a trial.
@@ -21,11 +25,17 @@ function canUse(account, now) {
   return status === 'cancelled' && now < account.periodEnd ? { ok: true } : { ok: false, reason: 'cancelled' }
 }
 
+// While it is free there is nothing to protect: an email is the whole account.
+function canUse(account, now) {
+  if (!account.signedIn) return { ok: false, reason: 'signed-out' }
+  return FREE ? { ok: true } : paidCanUse(account, now)
+}
+
 const DAY = 24 * 60 * 60 * 1000
 const date = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 
 // The account in one line, for the app window's profile.
-function planLine(sub, now) {
+function paidPlanLine(sub, now) {
   const { status, trialEndsAt, periodEnd } = sub || {}
   if (status === 'trialing') {
     const days = Math.ceil((trialEndsAt - now) / DAY)
@@ -37,4 +47,8 @@ function planLine(sub, now) {
   return 'No subscription'
 }
 
-module.exports = { canUse, planLine }
+function planLine(sub, now) {
+  return FREE ? 'Free · early access' : paidPlanLine(sub, now)
+}
+
+module.exports = { FREE, canUse, planLine, paidCanUse, paidPlanLine }
