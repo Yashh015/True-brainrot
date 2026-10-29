@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme } = require('electron')
+const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, session, screen, globalShortcut, ipcMain, powerMonitor, shell, dialog, nativeTheme, clipboard } = require('electron')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
@@ -9,6 +9,13 @@ const { PORT } = require('./install-hooks')
 const { toSetDetails } = require('./cookies')
 const { createAccount } = require('./account')
 const CONFIG = require('./config.json') // the Supabase project, written from .env by make-config.js
+const { FREE } = require('./access')
+const { STEPS, screenFor, checklist } = require('./onboarding')
+// What the plugin needs, in the order the card shows it; the Copy buttons put these on the clipboard.
+const PLUGIN_COMMANDS = ['/plugin marketplace add Yashh015/True-brainrot', '/plugin install true-brainrot@true-brainrot']
+// The privacy page will live on the landing page. While this is empty the button is hidden.
+const PRIVACY_URL = ''
+const HOOKS = new Set(['prompt', 'stop', 'attention']) // the three the plugin sends
 const { logoBitmap } = require('./icon')
 let tray = null // kept at module level: a tray held only by a closure is garbage-collected and vanishes
 
@@ -163,7 +170,7 @@ app.whenReady().then(() => {
       if (++crashes[name] > CRASH_TRIES) return showCrashed()
       setTimeout(() => { if (feedOn) page.loadURL(SITES[name]).catch(() => {}) }, 3000)
     })
-    page.on('did-finish-load', () => { if (page.getURL() !== 'about:blank') crashes[name] = 0 })
+    page.on('did-finish-load', () => { if (page.getURL() !== 'about:blank') { crashes[name] = 0; checkLogins() } })
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
   win.webContents.on('did-finish-load', showZoom)
@@ -248,8 +255,14 @@ app.whenReady().then(() => {
   // Your choices, kept next to the width: Start with Windows (it used to be forced on every start)
   // and whether setup is done (the window opens by itself only on the first start after installing).
   const prefsFile = path.join(app.getPath('userData'), 'prefs.json')
-  const prefs = { openAtLogin: true, setupDone: false }
-  try { Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile, 'utf8'))) } catch {}
+  const prefs = { openAtLogin: true, setupDone: false, step: 'email', connected: false, chimeOff: false }
+  let saved = {} // the file as it was, so a missing key can be told from a default one
+  try { saved = JSON.parse(fs.readFileSync(prefsFile, 'utf8')) } catch {}
+  Object.assign(prefs, saved)
+  const savePrefs = () => fs.writeFile(prefsFile, JSON.stringify(prefs), () => {})
+  // An install from before this flow has an email and no step: it belongs on the profile, not in a
+  // walkthrough it has already done.
+  if (saved.step === undefined) prefs.step = account.view().email && prefs.setupDone ? 'done' : 'email'
   // Both windows show the account: the sidebar its gate, the app window the profile.
   const send = (channel, data) => { for (const w of [win, appWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, data) }
   const applyAccess = () => {
@@ -271,11 +284,33 @@ app.whenReady().then(() => {
   win.webContents.on('did-finish-load', applyAccess)
   const refresh = () => account.refresh().catch(() => {}).finally(applyAccess)
 
-  ipcMain.on('sign-in', (_, email) => account.signIn(String(email).trim()).catch(() => {}))
+  // X and Instagram each set one cookie that only exists while signed in. Read the names only, never
+  // the values. Electron's own domain filter mishandles the leading dot on these, so match here.
+  let loggedIn = false
+  const checkLogins = async () => {
+    const all = await feed.cookies.get({}).catch(() => [])
+    const has = (name, domain) => all.some(c => c.name === name && c.domain.endsWith(domain))
+    const now = has('auth_token', 'x.com') || has('sessionid', 'instagram.com')
+    if (now === loggedIn) return
+    loggedIn = now
+    sendSettings()
+  }
+
+  ipcMain.on('sign-in', (_, email) => {
+    prefs.step = 'how-1' // a second account must never inherit the first one's 'done'
+    savePrefs()
+    account.signIn(String(email).trim()).catch(() => {})
+    sendSettings() // the email is stored synchronously, so the card can change now
+  })
   ipcMain.on('verify-code', (_, code) => account.verifyCode(String(code).replace(/\D/g, '')).catch(() => {}))
   ipcMain.on('refresh', refresh)
   ipcMain.on('remove-device', (_, id) => account.removeDevice(String(id)).catch(() => {}))
-  ipcMain.on('sign-out', () => account.signOut().catch(() => {}))
+  ipcMain.on('sign-out', () => {
+    prefs.step = 'email'
+    savePrefs()
+    account.signOut().catch(() => {})
+    sendSettings()
+  })
   ipcMain.on('subscribe', async () => {
     const url = await account.checkoutUrl().catch(() => null)
     if (!url) return send('access', { ...account.view(), error: 'Subscriptions open soon.' })
@@ -291,6 +326,13 @@ app.whenReady().then(() => {
   // Next preset; from Custom it starts again at the first. The panel stays docked right.
   ipcMain.on('zoom-reset', () => setZoom(current, 1))
   ipcMain.on('quit', () => app.quit())
+  // The window is a data: page, so it has no secure-context clipboard of its own.
+  ipcMain.on('copy', (_, index) => {
+    const command = PLUGIN_COMMANDS[index]
+    if (command) clipboard.writeText(command)
+  })
+  // Its pages never navigate, so the privacy page opens in your normal browser.
+  ipcMain.on('open-privacy', () => { if (PRIVACY_URL) openOutside(PRIVACY_URL) })
 
   // Alt+F4 or any other window close just puts the panel away; only the × button, the busy-port
   // dialog or Windows shutting down quits. One window gone means the whole app gone otherwise.
@@ -310,7 +352,7 @@ app.whenReady().then(() => {
     })
     stayPut(appWin.webContents)
     appWin.loadURL(appPage)
-    appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings() })
+    appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings(); checkLogins() })
     appWin.once('ready-to-show', () => appWin.show())
     // Its × only hides it: the app keeps running in the tray, ready for Claude.
     appWin.on('close', event => { if (!quitting) { event.preventDefault(); appWin.hide() } })
@@ -324,19 +366,40 @@ app.whenReady().then(() => {
 
   // Installed, the exe is the app. From `npm start` it is electron.exe, which needs this folder passed in.
   const loginItem = () => app.setLoginItemSettings({ name: 'True Brainrot', openAtLogin: prefs.openAtLogin === true, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
-  const sendSettings = () => send('settings', { openAtLogin: prefs.openAtLogin === true, paused: !companion.isEnabled() })
+  // One payload for both windows: the page renders the card and the checklist it is given, so the
+  // rules stay in onboarding.js rather than being written twice.
+  const sendSettings = () => send('settings', {
+    openAtLogin: prefs.openAtLogin === true,
+    paused: !companion.isEnabled(),
+    step: prefs.step,
+    screen: screenFor({ email: account.view().email, step: prefs.step }),
+    connected: prefs.connected === true,
+    chimeOff: prefs.chimeOff === true,
+    loggedIn,
+    checklist: checklist({ connected: prefs.connected, loggedIn, chimeOff: prefs.chimeOff }),
+    free: FREE,
+    commands: PLUGIN_COMMANDS,
+    privacy: PRIVACY_URL !== '',
+  })
   ipcMain.on('set-setting', (_, key, value) => {
     if (key === 'openAtLogin') {
       prefs.openAtLogin = value === true
-      fs.writeFile(prefsFile, JSON.stringify(prefs), () => {})
+      savePrefs()
       loginItem()
     } else if (key === 'paused' && (value === true) === companion.isEnabled()) companion.toggleEnabled()
+    else if (key === 'step' && STEPS.includes(value)) { prefs.step = value; savePrefs() }
+    else if (key === 'chimeOff') { prefs.chimeOff = value === true; savePrefs() }
     sendSettings()
   })
 
   http.createServer((req, res) => {
     // curl sends no Origin; a web page in your browser does, and gets ignored.
-    if (req.method === 'POST' && !req.headers.origin) companion.event(req.url.slice(1))
+    if (req.method === 'POST' && !req.headers.origin) {
+      const name = req.url.slice(1)
+      // The first hook proves the plugin is installed: that is what ticks the checklist.
+      if (HOOKS.has(name) && !prefs.connected) { prefs.connected = true; savePrefs(); sendSettings() }
+      companion.event(name)
+    }
     res.writeHead(204).end() // no body: UserPromptSubmit output would reach Claude's context
   }).on('error', err => {
     // Something else holds the port: say so instead of crashing with a stack trace.
@@ -371,7 +434,7 @@ app.whenReady().then(() => {
   if (!prefs.setupDone) {
     openApp()
     prefs.setupDone = true
-    fs.writeFile(prefsFile, JSON.stringify(prefs), () => {})
+    savePrefs()
   }
 })
 

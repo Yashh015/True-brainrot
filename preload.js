@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('companion', {
   openApp: () => ipcRenderer.send('open-app'),
   onSettings: fn => ipcRenderer.on('settings', (_, settings) => fn(settings)),
   setSetting: (key, value) => ipcRenderer.send('set-setting', key, value),
+  copy: index => ipcRenderer.send('copy', index),
+  openPrivacy: () => ipcRenderer.send('open-privacy'),
   signIn: email => ipcRenderer.send('sign-in', email),
   verifyCode: code => ipcRenderer.send('verify-code', code),
   refresh: () => ipcRenderer.send('refresh'),
