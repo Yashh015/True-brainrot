@@ -29,10 +29,20 @@ function checklist({ connected, loggedIn, chimeOff } = {}) {
 }
 
 // A repeat signup is a success: the key caught it, so this email is already on the list. Kept here,
-// out of account.js, so the rule can be tested without Electron.
+// out of account.js, so the rule can be tested without Electron. The daily index is not a repeat:
+// it means this PC already sent a different address today.
 function isDuplicate(error) {
   if (!error) return false
-  return error.code === '23505' || /duplicate key/i.test(error.message || '')
+  const text = `${error.message || ''} ${error.details || ''}`
+  if (/one_signup_a_day/.test(text)) return false
+  return error.code === '23505' || /duplicate key/i.test(text)
 }
 
-module.exports = { STEPS, screenFor, next, back, checklist, isDuplicate }
+// Worth another try: offline (no code at all), or this PC already signed up today, which clears at
+// midnight. A server that refused the row will refuse it again in six hours, so that one is dropped.
+function shouldRetry(error) {
+  if (!error) return false
+  return !error.code || /one_signup_a_day/.test(`${error.message || ''} ${error.details || ''}`)
+}
+
+module.exports = { STEPS, screenFor, next, back, checklist, isDuplicate, shouldRetry }

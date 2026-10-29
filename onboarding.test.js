@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { STEPS, screenFor, next, back, checklist, isDuplicate } = require('./onboarding')
+const { STEPS, screenFor, next, back, checklist, isDuplicate, shouldRetry } = require('./onboarding')
 
 test('no email yet is always the email card', () => {
   for (const step of STEPS) assert.strictEqual(screenFor({ email: '', step }), 'email')
@@ -50,4 +50,20 @@ test('a repeat signup counts as success, a network failure does not', () => {
   assert.strictEqual(isDuplicate({ message: 'duplicate key value' }), true)
   assert.strictEqual(isDuplicate({ message: 'Failed to fetch' }), false)
   assert.strictEqual(isDuplicate(null), false)
+})
+
+test('a second address from the same PC today is not a repeat, and is tried again', () => {
+  const daily = { code: '23505', message: 'duplicate key value violates unique constraint "one_signup_a_day"' }
+  const repeat = { code: '23505', message: 'duplicate key value violates unique constraint "signups_pkey"' }
+  assert.strictEqual(isDuplicate(daily), false)
+  assert.strictEqual(shouldRetry(daily), true)
+  assert.strictEqual(isDuplicate(repeat), true)
+  assert.strictEqual(shouldRetry(repeat), false)
+})
+
+test('only a network failure or the daily limit is worth another try', () => {
+  assert.strictEqual(shouldRetry({ message: 'TypeError: fetch failed', code: '' }), true)
+  assert.strictEqual(shouldRetry({ code: '23514', message: 'new row violates check constraint' }), false)
+  assert.strictEqual(shouldRetry({ code: '42P01', message: 'relation "signups" does not exist' }), false)
+  assert.strictEqual(shouldRetry(null), false)
 })

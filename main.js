@@ -352,7 +352,7 @@ app.whenReady().then(() => {
     })
     stayPut(appWin.webContents)
     appWin.loadURL(appPage)
-    appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings(); checkLogins() })
+    appWin.webContents.on('did-finish-load', () => { applyAccess(); sendSettings(); checkLogins(); refresh() })
     appWin.once('ready-to-show', () => appWin.show())
     // Its × only hides it: the app keeps running in the tray, ready for Claude.
     appWin.on('close', event => { if (!quitting) { event.preventDefault(); appWin.hide() } })

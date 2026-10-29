@@ -51,21 +51,32 @@
 <script>
   // What's missing, in one line; the app window does the rest.
   const GATE = {
-    'signed-out': ['Enter your email to start', "Open the app to get going. It's free."],
     'trial-ended': ['Your free trial has ended', 'Subscribe to keep scrolling while Claude works.'],
     'cancelled': ['Your subscription has ended', 'Subscribe again to bring the feed back.'],
     'payment-failed': ["Your last payment didn't go through", 'Update your payment details to keep the feed.'],
     'offline-too-long': ['Connect to the internet', 'True Brainrot checks your subscription every few days.'],
     'device-limit': ['Signed in on 2 PCs already', 'Sign out one of them to use True Brainrot here.'],
   }
+  // Two lines for the one gate that depends on the switch: free says email, paid says trial.
+  const SIGNED_OUT = {
+    free: ['Enter your email to start', "Open the app to get going. It's free."],
+    paid: ['Sign in to start', 'Your 7-day free trial starts when you sign in.'],
+  }
+  let free = true // set from the app's settings, so a paid build never claims to be free
+  let missing = null
+  const showGate = view => {
+    missing = view
+    const [title, text] = view.reason === 'signed-out' ? SIGNED_OUT[free ? 'free' : 'paid'] : GATE[view.reason]
+    gateTitle.textContent = title
+    gateText.textContent = text
+  }
   companion.onAccess(view => {
     document.body.classList.toggle('locked', !view.ok)
     gate.hidden = view.ok
-    if (view.ok) return
-    const [title, text] = GATE[view.reason]
-    gateTitle.textContent = title
-    gateText.textContent = text
+    if (view.ok) { missing = null; return }
+    showGate(view)
   })
+  companion.onSettings(s => { free = s.free !== false; if (missing) showGate(missing) })
 
   const tabs = document.querySelectorAll('[data-tab]')
   tabs.forEach(b => b.onclick = () => {

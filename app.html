@@ -215,8 +215,11 @@
       ? (!view.email ? 'sign-in' : view.reason === 'device-limit' ? 'limit' : 'profile')
       : (settings.screen || 'email')
     // The email card keeps what you typed: its key holds only its own bits, not every setting, so a
-    // checklist tick arriving from the feed does not rebuild it under your fingers.
-    const key = screen === 'email' ? JSON.stringify([screen, settings.privacy]) : JSON.stringify([screen, view, settings])
+    // checklist tick arriving from the feed does not rebuild it under your fingers. The paid code
+    // screens get the same treatment: a hook can arrive while a code is being typed.
+    const key = screen === 'email' ? JSON.stringify([screen, settings.privacy])
+      : screen === 'sign-in' ? JSON.stringify([screen, view.sent, view.error])
+      : JSON.stringify([screen, view, settings])
     if (key === shown) return
     shown = key
     card.classList.toggle('wide', screen === 'profile' || screen === 'connect')

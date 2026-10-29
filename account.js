@@ -7,7 +7,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { canUse, planLine, FREE } = require('./access')
-const { isDuplicate } = require('./onboarding')
+const { shouldRetry } = require('./onboarding')
 
 function createAccount({ url, anonKey, dir, onChange }) {
   const file = path.join(dir, 'account.bin')
@@ -32,12 +32,15 @@ function createAccount({ url, anonKey, dir, onChange }) {
   let seenWritten = 0 // when seenAt last went to disk
 
   // Sends the email that sign-in kept. A duplicate is a success: the key caught it, so this email is
-  // already on the list. Anything else (offline, server down) stays pending and is retried.
+  // already on the list. Offline, or a second address on a day this PC already signed up, is kept
+  // and retried; anything else the server refuses is dropped rather than retried forever.
   async function sendSignup() {
     if (!store.signupPending || !store.email) return
     const { error: failed } = await supabase.from('signups')
       .insert({ email: store.email, device_id: store.deviceId })
-    if (!failed || isDuplicate(failed)) { delete store.signupPending; save() }
+    if (shouldRetry(failed)) return
+    delete store.signupPending
+    save()
   }
 
   async function refresh() {
@@ -125,6 +128,9 @@ function createAccount({ url, anonKey, dir, onChange }) {
       store = { deviceId: store.deviceId }
       others = null
       save()
+      // An install that was signed in before the app went free still holds a session in memory; drop
+      // it, or the signup insert would run as a user this table grants nothing to.
+      if (FREE) supabase.auth.signOut({ scope: 'local' }).catch(() => {})
     },
 
     // A checkout link for this account from the server; null until payments are switched on.
