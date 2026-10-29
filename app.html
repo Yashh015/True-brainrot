@@ -37,6 +37,16 @@
   #card.wide { max-width: 360px }
   #tip { align-self: center; margin: 0; padding: 6px 12px; border-radius: 999px; background: rgba(20,12,6,.78); font-size: 12.5px; color: #e8dccb; text-align: center }
   kbd { display: inline-block; padding: 1px 6px; border: 1px solid rgba(255,255,255,.25); border-bottom-width: 2px; border-radius: 5px; background: rgba(20,12,6,.55); color: #f4ece2; font: 600 11.5px "Segoe UI", system-ui, sans-serif }
+  /* The walkthrough: text-sized Back/Skip, three step dots, the command rows. */
+  #card .secondary { height: 26px; padding: 0 8px; border: 0; color: #e8dccb; font-size: 12.5px }
+  #card .secondary:hover { background: none; color: #fff; text-decoration: underline }
+  #card .dots { display: flex; justify-content: center; gap: 6px; margin-top: 2px }
+  #card .dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.28) }
+  #card .dots span.on { background: #f4ece2 }
+  #card code { font: 12px "Cascadia Mono", Consolas, monospace; color: #fff; text-align: left; word-break: break-all; line-height: 1.4 }
+  #card .status { font-size: 12.5px; color: #c9bba8 }
+  #card .status.on, #card .tick.on { color: #bfe6a8 }
+  #card .tick { color: #c9bba8 }
 </style>
 <main id="poster-wrap">
   <canvas id="pixels" aria-hidden="true"></canvas>
@@ -98,6 +108,49 @@
 
   let view = {}, settings = {}
 
+  // The free walkthrough. main.js decides which card is due (settings.screen) from the step it saved,
+  // so closing the window mid-flow comes back to the same card.
+  const go = step => () => companion.setSetting('step', step)
+  const link = (text, onclick) => el('button', { textContent: text, onclick, className: 'secondary' })
+  const dots = n => el('div', { className: 'dots' }, ...[1, 2, 3].map(i => el('span', { className: i === n ? 'on' : '' })))
+
+  const emailScreen = () => [
+    el('h1', { textContent: 'Get started' }),
+    el('p', { textContent: "Free while in early access. We'll only email you about updates." }),
+    el('form', { onsubmit: event => { event.preventDefault(); companion.signIn(event.target.email.value) } },
+      el('input', { name: 'email', type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email' }),
+      el('button', { type: 'submit', textContent: 'Continue', className: 'primary' })),
+    settings.privacy ? link('Privacy', () => companion.openPrivacy()) : '',
+  ]
+
+  // heading, line, dot, where Back goes (none on the first card), where Next goes
+  const HOW = {
+    'how-1': ['It slides in while Claude works', 'X and Instagram appear beside Claude during long tasks.', 1, null, 'how-2'],
+    'how-2': ['It steps aside when Claude is done', 'A chime plays when Claude finishes or needs you.', 2, 'how-1', 'connect'],
+  }
+
+  const howScreen = step => {
+    const [heading, line, dot, backTo, nextTo] = HOW[step]
+    return [el('h1', { textContent: heading }), el('p', { textContent: line }),
+      button('Next', go(nextTo), true),
+      backTo ? link('Back', go(backTo)) : '',
+      dots(dot)]
+  }
+
+  // "Waiting for Claude…" turns to "✓ Connected" when the app's first hook arrives.
+  const connectScreen = () => [
+    el('h1', { textContent: 'Connect Claude Code' }),
+    el('p', { textContent: 'Run these two commands in Claude Code, then use Claude in the desktop app: the panel only appears beside that window.' }),
+    ...(settings.commands || []).map((command, i) => el('div', { className: 'row' },
+      el('code', { textContent: command }),
+      button('Copy', () => companion.copy(i)))),
+    el('p', { className: settings.connected ? 'status on' : 'status', textContent: settings.connected ? '✓ Connected' : 'Waiting for Claude…' }),
+    settings.connected ? button('Done', go('done'), true) : '',
+    link('Skip for now', go('done')),
+    link('Back', go('how-2')),
+    dots(3),
+  ]
+
   const signInScreen = v => v.sent
     ? [el('h1', { textContent: 'Check your email' }),
        el('p', { textContent: `Type the code we sent to ${v.sent}.` }),
@@ -120,7 +173,27 @@
   const toggle = (label, key) => el('label', { className: 'row' }, el('span', { textContent: label }),
     el('input', { type: 'checkbox', checked: settings[key] === true, onchange: event => companion.setSetting(key, event.target.checked) }))
 
-  const profileScreen = v => [
+  // Two items tick themselves; the chime one is a checkbox, because nothing here can see Claude's
+  // own sound setting.
+  const checkRow = item => el('div', { className: 'row' }, el('span', { textContent: item.label }),
+    item.auto
+      ? el('span', { className: item.done ? 'tick on' : 'tick', textContent: item.done ? '✓' : '—' })
+      : el('input', { type: 'checkbox', checked: item.done, onchange: event => companion.setSetting('chimeOff', event.target.checked) }))
+
+  const freeProfile = v => [
+    el('h1', { textContent: 'Your account' }),
+    el('p', { className: 'email', textContent: v.email }),
+    el('div', { className: 'row' }, el('span', { textContent: v.plan })),
+    ...(settings.checklist && !settings.checklist.done
+      ? [el('h2', { textContent: 'Setup' }), ...settings.checklist.items.map(checkRow)]
+      : []),
+    el('h2', { textContent: 'Settings' }),
+    toggle('Start with Windows', 'openAtLogin'),
+    toggle('Pause the panel (Ctrl + Alt + F)', 'paused'),
+    button('Sign out', () => companion.signOut()),
+  ]
+
+  const paidProfile = v => [
     el('h1', { textContent: 'Your account' }),
     el('p', { className: 'email', textContent: v.email }),
     el('div', { className: 'row' }, el('span', { textContent: v.plan }),
@@ -138,12 +211,22 @@
   // Sign-in screens are rebuilt only when they change, so a half-typed email or code survives.
   let shown = ''
   function render() {
-    const screen = !view.email ? 'sign-in' : view.reason === 'device-limit' ? 'limit' : 'profile'
-    const key = JSON.stringify(screen === 'profile' ? [screen, view, settings] : [screen, view.sent, view.error, view.devices])
+    const screen = settings.free === false
+      ? (!view.email ? 'sign-in' : view.reason === 'device-limit' ? 'limit' : 'profile')
+      : (settings.screen || 'email')
+    // The email card keeps what you typed: its key holds only its own bits, not every setting, so a
+    // checklist tick arriving from the feed does not rebuild it under your fingers.
+    const key = screen === 'email' ? JSON.stringify([screen, settings.privacy]) : JSON.stringify([screen, view, settings])
     if (key === shown) return
     shown = key
-    card.classList.toggle('wide', screen === 'profile')
-    const body = screen === 'sign-in' ? signInScreen(view) : screen === 'limit' ? deviceLimitScreen(view) : profileScreen(view)
+    card.classList.toggle('wide', screen === 'profile' || screen === 'connect')
+    const body = screen === 'email' ? emailScreen()
+      : screen === 'how-1' || screen === 'how-2' ? howScreen(screen)
+      : screen === 'connect' ? connectScreen()
+      : screen === 'limit' ? deviceLimitScreen(view)
+      : screen === 'sign-in' ? signInScreen(view)
+      : settings.free === false ? paidProfile(view)
+      : freeProfile(view)
     card.replaceChildren(...body, ...(view.error ? [el('p', { className: 'error', textContent: view.error })] : []))
     drawPixels()
   }
