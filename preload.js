@@ -8,7 +8,6 @@ contextBridge.exposeInMainWorld('companion', {
   onZoom: fn => ipcRenderer.on('zoom', (_, factor) => fn(factor)),
   reload: () => ipcRenderer.send('reload'),
   onCrashed: fn => ipcRenderer.on('crashed', (_, crashed) => fn(crashed)),
-  quit: () => ipcRenderer.send('quit'),
   onAlert: fn => ipcRenderer.on('alert', (_, kind) => fn(kind)),
   onAccess: fn => ipcRenderer.on('access', (_, view) => fn(view)),
   openApp: () => ipcRenderer.send('open-app'),

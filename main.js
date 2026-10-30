@@ -93,7 +93,7 @@ app.whenReady().then(() => {
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')))
   noFade(win.getNativeWindowHandle())
   // The app's own pages never navigate: a dropped link or a stray script would otherwise load
-  // another site with the companion bridge (sign out, settings, quit) still attached.
+  // another site with the companion bridge (sign out, settings) still attached.
   const stayPut = contents => {
     contents.on('will-navigate', event => event.preventDefault())
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -188,6 +188,8 @@ app.whenReady().then(() => {
   // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
   // loses a login you just made. Write them now, each time the panel steps away and on quit.
   const saveLogins = () => feed.cookies.flushStore().catch(() => {})
+  // A sign-in is written the moment it happens, so a crash or a killed process can't lose it.
+  feed.cookies.on('changed', (_, c, __, removed) => { if (!removed && ['auth_token', 'sessionid'].includes(c.name)) saveLogins() })
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
   // Every move re-states the size: at 125% scaling setPosition alone rounds the width
@@ -215,8 +217,15 @@ app.whenReady().then(() => {
     }, 16)
   }
 
+  // A load that was cancelled (-3, which did-fail-load skips) leaves the feed blank for good, and
+  // nothing else retries it: every time the panel comes out, load a feed that never got its site.
+  const heal = () => {
+    const page = views[current].webContents
+    if (feedOn && !page.isLoading() && !page.getURL().startsWith('http')) page.loadURL(SITES[current]).catch(() => {})
+  }
   const companion = createCompanion({
     show: () => {
+      heal()
       win.webContents.send('alert', null)
       if (!win.isVisible()) { place(outX()); win.showInactive() } // never steal focus from Claude
       slideTo(inX())
@@ -233,6 +242,7 @@ app.whenReady().then(() => {
     },
     back: () => {
       clearInterval(slide)
+      heal()
       place(inX())
       win.showInactive()
     },
@@ -245,6 +255,7 @@ app.whenReady().then(() => {
     current = name
     if (feedOn) win.contentView.addChildView(views[current])
     layout()
+    heal()
     showZoom()
     showCrashed()
   })
@@ -325,7 +336,6 @@ app.whenReady().then(() => {
   ipcMain.on('minimise', () => companion.close())
   // Next preset; from Custom it starts again at the first. The panel stays docked right.
   ipcMain.on('zoom-reset', () => setZoom(current, 1))
-  ipcMain.on('quit', () => app.quit())
   // The window is a data: page, so it has no secure-context clipboard of its own.
   ipcMain.on('copy', (_, index) => {
     const command = PLUGIN_COMMANDS[index]
@@ -334,7 +344,7 @@ app.whenReady().then(() => {
   // Its pages never navigate, so the privacy page opens in your normal browser.
   ipcMain.on('open-privacy', () => { if (PRIVACY_URL) openOutside(PRIVACY_URL) })
 
-  // Alt+F4 or any other window close just puts the panel away; only the × button, the busy-port
+  // Alt+F4 or any other window close just puts the panel away; only the tray Quit, the busy-port
   // dialog or Windows shutting down quits. One window gone means the whole app gone otherwise.
   let quitting = false
   app.on('before-quit', () => { quitting = true })
