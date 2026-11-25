@@ -42,9 +42,10 @@ const SITES = {
   reddit: 'https://www.reddit.com',
   telegram: 'https://web.telegram.org/k/', // the K client: much lighter than A
 }
-// ponytail: feeds kept running at once (the one shown + the last one); older ones are closed and
-// reload when picked again, so 5 sites never means 5 Chromium renderers. Raise for faster switching.
-const LIVE = 2
+// ponytail: feeds kept running at once (the one shown + the last two); older ones are closed and
+// reload when picked again, so 5 sites never means 5 Chromium renderers. Hidden ones are paused and
+// throttled, so they cost memory, not CPU. Raise for instant switching on PCs with RAM to spare.
+const LIVE = 3
 // Cookies that only exist while signed in. Names only, never values.
 const LOGIN_COOKIES = [['auth_token', 'x.com'], ['sessionid', 'instagram.com'], ['reddit_session', 'reddit.com'], ['LOGIN_INFO', 'youtube.com']]
 // Ad and analytics hosts: no feed needs them to work, and they cost the most CPU and network.
@@ -194,6 +195,11 @@ app.whenReady().then(() => {
       setTimeout(() => { if (live(name, page)) page.loadURL(SITES[name]).catch(() => {}) }, 3000)
     })
     page.on('did-finish-load', () => { crashes[name] = 0; checkLogins() })
+    // Load at full speed even while the panel is hidden, so the feed is ready when it slides in;
+    // once loaded, Chromium throttles it again. The bar under the tabs shows while it loads.
+    const loading = on => { if (name === current) win.webContents.send('loading', on) }
+    page.on('did-start-loading', () => { page.setBackgroundThrottling(false); loading(true) })
+    page.on('did-stop-loading', () => { page.setBackgroundThrottling(true); loading(false) })
     encrypted.then(() => { if (live(name, page)) page.loadURL(SITES[name]).catch(() => {}) }) // did-fail-load retries
     return view
   }
@@ -207,11 +213,14 @@ app.whenReady().then(() => {
     views[current] ||= makeView(current)
     win.contentView.addChildView(views[current])
     layout()
+    win.webContents.send('loading', views[current].webContents.isLoading())
     recent = [current, ...recent.filter(n => n !== current)]
     for (const name of recent.splice(LIVE)) close(name)
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
   win.webContents.on('did-finish-load', showZoom)
+  // Hovering a tab: open its connections now (DNS, TCP, TLS), so the click skips that wait.
+  ipcMain.on('warm', (_, name) => { if (feedOn && SITES[name] && !views[name]) feed.preconnect({ url: SITES[name], numSockets: 2 }) })
   ipcMain.on('reload', () => {
     crashes[current] = 0
     showCrashed()
@@ -223,7 +232,8 @@ app.whenReady().then(() => {
 
   // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
   // loses a login you just made. Write them now, each time the panel steps away and on quit.
-  const saveLogins = () => feed.cookies.flushStore().catch(() => {})
+  // Telegram keeps its login in site storage, not a cookie: write that too.
+  const saveLogins = () => { feed.flushStorageData(); feed.cookies.flushStore().catch(() => {}) }
   // A sign-in is written the moment it happens, so a crash or a killed process can't lose it.
   feed.cookies.on('changed', (_, c, __, removed) => { if (!removed && LOGIN_COOKIES.some(([n]) => n === c.name)) saveLogins() })
 
