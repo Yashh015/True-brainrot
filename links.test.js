@@ -4,12 +4,13 @@ const { inFeed, isWebLink } = require('./links')
 
 test('the feeds and their sign-ins stay in the panel', () => {
   for (const url of ['https://x.com/home', 'https://www.instagram.com/', 'https://l.instagram.com/?u=x',
-    'https://accounts.google.com/o/oauth2', 'https://appleid.apple.com/auth', 'https://m.facebook.com/login'])
+    'https://accounts.google.com/o/oauth2', 'https://appleid.apple.com/auth', 'https://m.facebook.com/login',
+    'https://www.youtube.com/shorts', 'https://youtu.be/abc', 'https://www.reddit.com/r/all', 'https://web.telegram.org/k/'])
     assert.ok(inFeed(url), url)
 })
 
 test('every other site, look-alike or scheme leaves the panel', () => {
-  for (const url of ['https://example.com', 'https://notx.com', 'https://x.com.evil.io/', 'http://x.com/',
+  for (const url of ['https://example.com', 'https://notx.com', 'https://x.com.evil.io/', 'http://x.com/', 'https://t.me/x', 'https://notreddit.com/',
     'file:///C:/Windows/win.ini', 'javascript:alert(1)', 'not a url', ''])
     assert.ok(!inFeed(url), url)
 })

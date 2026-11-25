@@ -1,6 +1,6 @@
 # True Brainrot
 
-A side panel for X and Instagram that slides in while Claude works on a long task, and steps
+A side panel for X, Instagram, YouTube, Reddit and Telegram that slides in while Claude works on a long task, and steps
 aside with a chime the moment Claude finishes or needs your permission. It only ever appears
 beside Claude: switch to another app, minimise Claude or close it, and the panel goes too.
 
@@ -16,8 +16,8 @@ beside Claude: switch to another app, minimise Claude or close it, and the panel
    ```
 
 3. Sign in in the True Brainrot window (it opens by itself right after installing; later, click
-   the yellow tray icon or start True Brainrot from the Start menu). Then log in to X and
-   Instagram once in the panel. Use a username and password: "Sign in with Google" refuses
+   the yellow tray icon or start True Brainrot from the Start menu). Then log in to your feeds
+   once in the panel. Use a username and password: "Sign in with Google" refuses
    embedded browsers.
 4. Turn off the Claude app's own notification sound, or you'll hear two chimes.
 
@@ -34,7 +34,7 @@ plugin's hooks run through `cmd`.
 |---|---|
 | Ctrl+Q | Open or close the panel, in Claude |
 | Ctrl+Alt+F | Pause the companion for focused work, and resume |
-| Ctrl + wheel, Ctrl+= / Ctrl+- | Zoom the feed in or out; X and Instagram each remember their own |
+| Ctrl + wheel, Ctrl+= / Ctrl+- | Zoom the feed in or out; each feed remembers its own |
 | Ctrl+0 | Back to 100% (or click the % in the bar) |
 
 Drag the panel's left edge to make it wider or narrower; it remembers that too.
@@ -47,7 +47,7 @@ Drag the panel's left edge to make it wider or narrower; it remembers that too.
 - Your password is never stored. Only the login session is kept, encrypted with a key Windows
   ties to your Windows account, so it is useless if copied to another account or PC.
 - The feed gets no camera, microphone, location, notification or clipboard access.
-- The panel only ever shows X, Instagram and their sign-in pages. Any other link opens in your
+- The panel only ever shows its five feeds and their sign-in pages. Any other link opens in your
   normal browser, so no other site runs with your logins.
 
 ## Develop

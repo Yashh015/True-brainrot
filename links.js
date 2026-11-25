@@ -1,6 +1,7 @@
 // The only sites the feed session may show: the feeds, and the sign-ins they hand off to.
 // Anything else opens in your normal browser, so no other site ever runs with your logins.
-const FEED_HOSTS = ['x.com', 'twitter.com', 'instagram.com', 'facebook.com', 'google.com', 'apple.com']
+const FEED_HOSTS = ['x.com', 'twitter.com', 'instagram.com', 'facebook.com', 'google.com', 'apple.com',
+  'youtube.com', 'youtu.be', 'reddit.com', 'redd.it', 'telegram.org']
 
 function inFeed(url) {
   try {

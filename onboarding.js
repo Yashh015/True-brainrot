@@ -22,7 +22,7 @@ function back(step) { return clamp(STEPS.indexOf(step) - 1) }
 function checklist({ connected, loggedIn, chimeOff } = {}) {
   const items = [
     { key: 'connected', label: 'Claude connected', done: Boolean(connected), auto: true },
-    { key: 'loggedIn', label: 'Logged in to X or Instagram', done: Boolean(loggedIn), auto: true },
+    { key: 'loggedIn', label: 'Logged in to a feed', done: Boolean(loggedIn), auto: true },
     { key: 'chimeOff', label: "Claude's own chime turned off", done: Boolean(chimeOff), auto: false },
   ]
   return { items, done: items.every(item => item.done) }

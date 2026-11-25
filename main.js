@@ -35,7 +35,22 @@ const OPEN_KEY = 'Ctrl+Q' // open the feed yourself; press again to close it. Ta
 // version is the engine's real one: a made-up version that disagrees with what the page's own
 // checks see is a bot signal, and a fixed one goes stale with every Electron update.
 const CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`
-const SITES = { x: 'https://x.com', instagram: 'https://www.instagram.com' }
+const SITES = {
+  x: 'https://x.com',
+  instagram: 'https://www.instagram.com',
+  youtube: 'https://www.youtube.com/shorts', // vertical, like the panel
+  reddit: 'https://www.reddit.com',
+  telegram: 'https://web.telegram.org/k/', // the K client: much lighter than A
+}
+// ponytail: feeds kept running at once (the one shown + the last one); older ones are closed and
+// reload when picked again, so 5 sites never means 5 Chromium renderers. Raise for faster switching.
+const LIVE = 2
+// Cookies that only exist while signed in. Names only, never values.
+const LOGIN_COOKIES = [['auth_token', 'x.com'], ['sessionid', 'instagram.com'], ['reddit_session', 'reddit.com'], ['LOGIN_INFO', 'youtube.com']]
+// Ad and analytics hosts: no feed needs them to work, and they cost the most CPU and network.
+const BLOCKED = ['doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'google-analytics.com',
+  'googletagmanager.com', 'scorecardresearch.com', 'ads-twitter.com', 'amazon-adsystem.com', 'adnxs.com',
+  'criteo.com', 'criteo.net', 'taboola.com', 'outbrain.com', 'quantserve.com', 'moatads.com']
 const openOutside = url => { if (isWebLink(url)) shell.openExternal(url) }
 
 // Electron names the data folder after productName, so the rename from Scroll Companion would log
@@ -58,6 +73,8 @@ app.whenReady().then(() => {
   // The feed gets no camera, mic, location, notifications or clipboard: it can only show pages.
   feed.setPermissionRequestHandler((_, __, allow) => allow(false))
   feed.setPermissionCheckHandler(() => false)
+  // Filtered natively by Chromium: the callback only ever runs for a blocked host.
+  feed.webRequest.onBeforeRequest({ urls: BLOCKED.map(d => `*://*.${d}/*`) }, (_, done) => done({ cancel: true }))
   // Every page in the feed session, the sign-in pop-ups included, stays on FEED_HOSTS.
   app.on('web-contents-created', (_, contents) => {
     if (contents.session !== feed) return
@@ -102,22 +119,23 @@ app.whenReady().then(() => {
 
   // Logins saved before encryption was switched on are still plain text on disk: write them back.
   // Done before the feeds load, or a cookie a site refreshes meanwhile is overwritten with the old one.
-  const encrypted = feed.cookies.get({})
+  // Once only: it used to rewrite every cookie on every start, holding the feeds back each time.
+  // Not marked from `npm start`, where the encryption fuse is off and the rewrite does nothing.
+  const migrated = path.join(app.getPath('userData'), 'cookies-encrypted')
+  const encrypted = fs.existsSync(migrated) ? Promise.resolve() : feed.cookies.get({})
     .then(all => Promise.all(all.map(c => feed.cookies.set(toSetDetails(c)).catch(() => {}))))
-    .then(() => feed.cookies.flushStore()).catch(() => {})
+    .then(() => feed.cookies.flushStore())
+    .then(() => { if (app.isPackaged) fs.writeFileSync(migrated, '') }).catch(() => {})
 
-  // One view per site, kept alive while detached so each keeps its scroll position. Nothing loads
-  // until the account allows the feed (applyAccess below), so a locked panel never runs X or Instagram.
+  // Views are made when a tab is first shown and closed once LIVE newer tabs were shown after it.
+  // Nothing loads until the account allows the feed (applyAccess below).
   const views = {}
-  for (const name of Object.keys(SITES)) {
-    views[name] = new WebContentsView({ webPreferences: { session: feed } })
-    views[name].setBackgroundColor(BG)
-  }
+  let recent = [] // live tabs, most recent first
   let current = 'x'
   let feedOn = false
   const layout = () => {
     const [w, h] = win.getContentSize()
-    views[current].setBounds({ x: BORDER, y: BAR, width: w - 2 * BORDER, height: h - BAR - BORDER })
+    views[current]?.setBounds({ x: BORDER, y: BAR, width: w - 2 * BORDER, height: h - BAR - BORDER })
   }
   win.on('resize', layout)
   win.on('resized', () => {
@@ -133,7 +151,7 @@ app.whenReady().then(() => {
   const showZoom = () => win.webContents.send('zoom', zoom[current] || 1)
   const setZoom = (name, factor) => {
     zoom[name] = factor
-    views[name].webContents.setZoomFactor(factor)
+    views[name]?.webContents.setZoomFactor(factor)
     fs.writeFile(zoomFile, JSON.stringify(zoom), () => {})
     if (name === current) showZoom()
   }
@@ -151,9 +169,12 @@ app.whenReady().then(() => {
     else return
     event.preventDefault()
   }
-  const crashes = { x: 0, instagram: 0 } // crashes since the site last loaded
-  const showCrashed = () => win.webContents.send('crashed', crashes[current] > CRASH_TRIES)
-  for (const [name, view] of Object.entries(views)) {
+  const crashes = {} // crashes since the site last loaded
+  const showCrashed = () => win.webContents.send('crashed', (crashes[current] || 0) > CRASH_TRIES)
+  const live = (name, page) => feedOn && views[name]?.webContents === page
+  const makeView = name => {
+    const view = new WebContentsView({ webPreferences: { session: feed, spellcheck: false } })
+    view.setBackgroundColor(BG)
     const page = view.webContents
     page.on('zoom-changed', (_, direction) => stepZoom(name, direction === 'in' ? 1 : -1))
     page.on('before-input-event', zoomKeys(() => name))
@@ -162,34 +183,49 @@ app.whenReady().then(() => {
     // At Windows sign-in the app often starts before the network is up, leaving a blank feed.
     // Try again every few seconds; -3 is a navigation the page or you cancelled, not a failure.
     page.on('did-fail-load', (_, code, __, url, isMainFrame) => {
-      if (isMainFrame && code !== -3) setTimeout(() => { if (feedOn) page.loadURL(url) }, 3000)
+      if (isMainFrame && code !== -3) setTimeout(() => { if (live(name, page)) page.loadURL(url).catch(() => {}) }, 3000)
     })
     // A crashed or killed feed page would stay blank for good: load the site again. A page that
     // crashes on every load gets 3 tries, then the bar's Reload button (showCrashed) takes over.
     page.on('render-process-gone', () => {
-      if (++crashes[name] > CRASH_TRIES) return showCrashed()
-      setTimeout(() => { if (feedOn) page.loadURL(SITES[name]).catch(() => {}) }, 3000)
+      if (!live(name, page)) return // closed on purpose
+      crashes[name] = (crashes[name] || 0) + 1
+      if (crashes[name] > CRASH_TRIES) return showCrashed()
+      setTimeout(() => { if (live(name, page)) page.loadURL(SITES[name]).catch(() => {}) }, 3000)
     })
-    page.on('did-finish-load', () => { if (page.getURL() !== 'about:blank') { crashes[name] = 0; checkLogins() } })
+    page.on('did-finish-load', () => { crashes[name] = 0; checkLogins() })
+    encrypted.then(() => { if (live(name, page)) page.loadURL(SITES[name]).catch(() => {}) }) // did-fail-load retries
+    return view
+  }
+  const close = name => {
+    const view = views[name]
+    delete views[name]
+    view.webContents.close()
+  }
+  // Puts the current tab in the panel, starting it if it isn't running, and closes the oldest.
+  const showFeed = () => {
+    views[current] ||= makeView(current)
+    win.contentView.addChildView(views[current])
+    layout()
+    recent = [current, ...recent.filter(n => n !== current)]
+    for (const name of recent.splice(LIVE)) close(name)
   }
   win.webContents.on('before-input-event', zoomKeys(() => current))
   win.webContents.on('did-finish-load', showZoom)
   ipcMain.on('reload', () => {
     crashes[current] = 0
     showCrashed()
-    if (feedOn) views[current].webContents.loadURL(SITES[current]).catch(() => {})
+    if (feedOn) views[current]?.webContents.loadURL(SITES[current]).catch(() => {})
   })
 
-  const pauseVideo = () => {
-    for (const v of Object.values(views))
-      v.webContents.executeJavaScript("document.querySelectorAll('video').forEach(v => v.pause())").catch(() => {})
-  }
+  const pause = view => view?.webContents.executeJavaScript("document.querySelectorAll('video,audio').forEach(v => v.pause())").catch(() => {})
+  const pauseVideo = () => Object.values(views).forEach(pause)
 
   // Chromium writes cookies to disk on its own timer; a crash or a killed process before that
   // loses a login you just made. Write them now, each time the panel steps away and on quit.
   const saveLogins = () => feed.cookies.flushStore().catch(() => {})
   // A sign-in is written the moment it happens, so a crash or a killed process can't lose it.
-  feed.cookies.on('changed', (_, c, __, removed) => { if (!removed && ['auth_token', 'sessionid'].includes(c.name)) saveLogins() })
+  feed.cookies.on('changed', (_, c, __, removed) => { if (!removed && LOGIN_COOKIES.some(([n]) => n === c.name)) saveLogins() })
 
   // Slides from wherever it is now, so a show during a hide (or the reverse) turns round smoothly.
   // Every move re-states the size: at 125% scaling setPosition alone rounds the width
@@ -220,8 +256,8 @@ app.whenReady().then(() => {
   // A load that was cancelled (-3, which did-fail-load skips) leaves the feed blank for good, and
   // nothing else retries it: every time the panel comes out, load a feed that never got its site.
   const heal = () => {
-    const page = views[current].webContents
-    if (feedOn && !page.isLoading() && !page.getURL().startsWith('http')) page.loadURL(SITES[current]).catch(() => {})
+    const page = views[current]?.webContents
+    if (feedOn && page && !page.isLoading() && !page.getURL().startsWith('http')) page.loadURL(SITES[current]).catch(() => {})
   }
   const companion = createCompanion({
     show: () => {
@@ -250,11 +286,10 @@ app.whenReady().then(() => {
   }, (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t) })
 
   ipcMain.on('tab', (_, name) => {
-    if (!views[name] || name === current) return
-    if (feedOn) win.contentView.removeChildView(views[current])
+    if (!SITES[name] || name === current) return
+    if (feedOn) { pause(views[current]); win.contentView.removeChildView(views[current]) } // left behind: stop its video
     current = name
-    if (feedOn) win.contentView.addChildView(views[current])
-    layout()
+    if (feedOn) showFeed()
     heal()
     showZoom()
     showCrashed()
@@ -281,27 +316,23 @@ app.whenReady().then(() => {
     send('access', view)
     if (view.ok === feedOn) return
     feedOn = view.ok
-    if (feedOn) {
-      for (const [name, url] of Object.entries(SITES))
-        encrypted.then(() => views[name].webContents.loadURL(url)).catch(() => {}) // did-fail-load retries
-      win.contentView.addChildView(views[current])
-      layout()
-    } else {
-      pauseVideo()
-      win.contentView.removeChildView(views[current])
-      for (const v of Object.values(views)) v.webContents.loadURL('about:blank').catch(() => {})
+    if (feedOn) showFeed()
+    else {
+      if (views[current]) win.contentView.removeChildView(views[current])
+      Object.keys(views).forEach(close)
+      recent = []
     }
   }
   win.webContents.on('did-finish-load', applyAccess)
   const refresh = () => account.refresh().catch(() => {}).finally(applyAccess)
 
-  // X and Instagram each set one cookie that only exists while signed in. Read the names only, never
+  // Each feed sets one cookie that only exists while signed in. Read the names only, never
   // the values. Electron's own domain filter mishandles the leading dot on these, so match here.
   let loggedIn = false
   const checkLogins = async () => {
     const all = await feed.cookies.get({}).catch(() => [])
     const has = (name, domain) => all.some(c => c.name === name && c.domain.endsWith(domain))
-    const now = has('auth_token', 'x.com') || has('sessionid', 'instagram.com')
+    const now = LOGIN_COOKIES.some(([name, domain]) => has(name, domain))
     if (now === loggedIn) return
     loggedIn = now
     sendSettings()
