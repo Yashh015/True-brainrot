@@ -14,7 +14,7 @@ const { STEPS, screenFor, checklist } = require('./onboarding')
 // What the plugin needs, in the order the card shows it; the Copy buttons put these on the clipboard.
 const PLUGIN_COMMANDS = ['/plugin marketplace add Yashh015/True-brainrot', '/plugin install true-brainrot@true-brainrot']
 // The privacy page will live on the landing page. While this is empty the button is hidden.
-const PRIVACY_URL = ''
+const PRIVACY_URL = 'https://yashh015.github.io/True-brainrot/privacy.html'
 const HOOKS = new Set(['prompt', 'stop', 'attention']) // the three the plugin sends
 const { logoBitmap } = require('./icon')
 let tray = null // kept at module level: a tray held only by a closure is garbage-collected and vanishes

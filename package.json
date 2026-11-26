@@ -9,7 +9,7 @@
   "scripts": {
     "prestart": "node make-config.js",
     "start": "electron .",
-    "test": "node --test",
+    "test": "node --test *.test.js",
     "predist": "node make-config.js",
     "dist": "electron-builder --win"
   },
